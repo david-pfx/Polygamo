@@ -1,0 +1,699 @@
+; Tic-Tac-Toe and variants
+;
+; Created by Polyomino Games from various sources as a sample for Polygamo.
+; 
+; Portions may be copyright by Zillions Development and others.
+
+;; useful macros
+(define add-to-empty  ((verify empty?) add) )
+(define step          ($1 (verify empty?) add) )
+
+(game
+   (title "Tic-Tac-Toe")
+   (description "Tic-tac-toe is a game for two players who take turns placing X and O marks 
+      in a 3 by 3 grid. 
+      The player with three marks in a horizontal, vertical, or diagonal row is the winner.
+      Otherwise it is a draw.")
+   (players X O)
+   (turn-order X O)
+   (board
+        (image "images\TTTbrd.png")
+        (grid
+            (start-rectangle 30 30 110 110)
+            (dimensions
+                ("A-/B-/C-" (0 120))
+                ("1/2/3" (120 0)))
+            (directions (n -1 0) (e 0 1) (nw -1 -1) (ne -1 1))
+        )
+   )
+   (piece
+        (name man)
+                (help "Man: drops on any empty square")
+                (image X "images\TTTX.png"
+                       O "images\TTTO.png")
+        (drops (add-to-empty))
+   )
+   (board-setup
+        (X (man off 5))
+        (O (man off 5))
+   )
+   (draw-condition (X O) stalemated)
+   (win-condition (X O)
+     (or (relative-config man n man n man)
+        (relative-config man e man e man)
+        (relative-config man ne man ne man)
+        (relative-config man nw man nw man)
+      )
+   )
+)
+
+(variant
+   (title "Losing Tic-Tac-Toe")
+   (description "Tic-tac-toe is a game for two players who take turns placing X and O marks 
+      spaces in a 3 by 3 grid. 
+      The player with three marks in a horizontal, vertical, or diagonal row is the loser.
+      Otherwise it is a draw.")
+   (loss-condition (X O)
+        (or (relative-config man n man n man)
+            (relative-config man e man e man)
+            (relative-config man ne man ne man)
+            (relative-config man nw man nw man)
+        )
+   )
+)
+
+(variant
+    (title "4x4 Tic-Tac-Toe")
+    (description "Tic-Tac-Toe adapted to a 4x4 grid.  
+      One side takes Blue and the other side takes Red.  
+      Players alternate dropping pieces on open spots.  
+      A player with four pieces in a row horizontally, vertically, or diagonally is the winner.  
+      Otherwise it's a draw.")
+    (players Blue Red)
+    (turn-order Blue Red)
+    (board
+        (image "images\TTT4x4.png")
+        (grid
+            (start-rectangle 0 0 100 100) ; top-left position
+            (dimensions ;4x4
+                ("a-/b-/c-/d-" (0 100)) ; rows
+                ("1/2/3/4" (100 0)) ; columns
+                        )
+                )
+        )
+    (piece (name man))
+    (piece
+        (name Ball)
+        (image Blue "images\blueball.png"
+               Red "images\redball.png")
+        (help "Man: drops on any empty square")
+        (drops (add-to-empty))
+        )
+    (board-setup
+        (Blue (Ball off 99))
+        (Red (Ball off 99))
+        )
+    (win-condition (Blue Red)
+        (or (absolute-config Ball (a-1 a-2 a-3 a-4))
+            (absolute-config Ball (b-1 b-2 b-3 b-4))
+            (absolute-config Ball (c-1 c-2 c-3 c-4))
+            (absolute-config Ball (d-1 d-2 d-3 d-4))
+            (absolute-config Ball (a-1 b-1 c-1 d-1))
+            (absolute-config Ball (a-2 b-2 c-2 d-2))
+            (absolute-config Ball (a-3 b-3 c-3 d-3))
+            (absolute-config Ball (a-4 b-4 c-4 d-4))
+            (absolute-config Ball (a-1 b-2 c-3 d-4))
+            (absolute-config Ball (a-4 b-3 c-2 d-1))
+         )
+    )
+)
+
+(variant
+    (title "Losing 4x4 Tic-Tac-Toe")
+    (description "Losing Tic-Tac-Toe adapted to a 4x4 grid.  
+      One side takes Blue and the other side takes Red.  
+      Players alternate dropping pieces on open spots.  
+      A player with four pieces in a row horizontally, vertically, or diagonally is the loser.  
+      Otherwise it's a draw.")
+    (players Blue Red)
+    (turn-order Blue Red)
+    (board
+        (image "images\TTT4x4.png")
+        (grid
+            (start-rectangle 0 0 100 100) ; top-left position
+            (dimensions ;4x4
+                ("a-/b-/c-/d-" (0 100)) ; rows
+                ("1/2/3/4" (100 0)) ; columns
+                        )
+                        (directions (n -1 0) (e 0 1) (ne -1 1) (nw -1 -1))
+                )
+        ) 
+    (piece (name man))
+    (piece
+        (name Ball)
+        (image Blue "images\blueball.png"
+               Red "images\redball.png")
+        (help "Ball: drops on any empty square")
+        (drops (add-to-empty))
+    )
+    (board-setup
+        (Blue (Ball off 99))
+        (Red (Ball off 99))
+    )
+    (loss-condition (Blue Red)
+        (or (relative-config Ball n Ball n Ball)
+            (relative-config Ball e Ball e Ball)
+            (relative-config Ball ne Ball ne Ball)
+            (relative-config Ball nw Ball nw Ball)
+        )
+    )
+)
+
+(variant
+    (title "Felix and Rover (Felix first)")
+    (description "Like 4x4 Tic-Tac-Toe, but the object is for Felix (the cat) to prevent either
+       player from getting four in a row, and for Rover (the dog) to force either player to get
+       four in a row.
+       In this variant Felix goes first.  
+       Players alternate dropping their pieces on open spots.  
+       If either player forms four in a row, Rover wins.
+       Otherwise it's a win for Felix.")
+    (players Felix Rover)
+    (turn-order Felix Rover)
+    (board
+        (image "images\TTT4x4.png")
+        (grid
+            (start-rectangle 0 0 100 100) ; top-left position
+            (dimensions ;4x4
+                ("a-/b-/c-/d-" (0 100)) ; rows
+                ("1/2/3/4" (100 0)) ; columns
+                        )
+                        (directions (n -1 0) (e 0 1) (ne -1 1) (nw -1 -1))
+                )
+        ) 
+    (piece (name man))
+    (piece
+        (name Pet)
+        (image Felix "images\Felix1.png" "images\Felix2.png"
+               Rover "images\Rover1.png" "images\Rover2.png")
+        (help "Pet: drops on any empty square")
+        (drops (add-to-empty))
+        )
+    (board-setup
+        (Felix (Pet off 99))
+        (Rover (Pet off 99))
+        )
+    (win-condition (Felix) stalemated)    
+    (win-condition (Rover)
+          (or (relative-config Pet n Pet n Pet n Pet)
+            (relative-config Pet e Pet e Pet e Pet)
+            (relative-config Pet ne Pet ne Pet ne Pet)
+            (relative-config Pet nw Pet nw Pet nw Pet)
+          )
+        )
+    (loss-condition (Felix)
+          (or (relative-config Pet n Pet n Pet n Pet)
+            (relative-config Pet e Pet e Pet e Pet)
+            (relative-config Pet ne Pet ne Pet ne Pet)
+            (relative-config Pet nw Pet nw Pet nw Pet)
+          )
+        )
+)
+
+(variant
+    (title "Felix and Rover (Rover first)")
+    (description "Like 4x4 Tic-Tac-Toe, but the object is for Felix (the cat) to prevent either
+       player from getting four in a row, and for Rover (the dog) to force either player to get
+       four in a row.
+       In this variant Rover goes first.  
+       Players alternate dropping their pieces on open spots.  
+       If either player forms four in a row, Rover wins.
+       Otherwise it's a win for Felix.")
+    (players Rover Felix)
+    (turn-order Rover Felix) 
+    (board
+        (image "images\TTT4x4.png")
+        (grid
+            (start-rectangle 0 0 100 100) ; top-left position
+            (dimensions ;4x4
+                ("a-/b-/c-/d-" (0 100)) ; rows
+                ("1/2/3/4" (100 0)) ; columns
+            )
+            (directions (n -1 0) (e 0 1) (ne -1 1) (nw -1 -1))
+        )
+    ) 
+    (piece (name man))
+    (piece
+        (name Pet)
+        (image Felix "images\Felix1.png" "images\Felix2.png"
+               Rover "images\Rover1.png" "images\Rover2.png")
+        (help "Pet: drops on any empty square")
+        (drops (add-to-empty))
+    )
+    (board-setup
+        (Rover (Pet off 99))
+        (Felix (Pet off 99))
+    )
+    (loss-condition (Rover) stalemated)
+    (win-condition (Rover)
+        (or (relative-config Pet n Pet n Pet n Pet)
+            (relative-config Pet e Pet e Pet e Pet)
+            (relative-config Pet ne Pet ne Pet ne Pet)
+            (relative-config Pet nw Pet nw Pet nw Pet)
+         )
+    )
+    (loss-condition (Felix)
+        (or (relative-config Pet n Pet n Pet n Pet)
+            (relative-config Pet e Pet e Pet e Pet)
+            (relative-config Pet ne Pet ne Pet ne Pet)
+            (relative-config Pet nw Pet nw Pet nw Pet)
+        )
+    )
+)
+
+(variant
+    (title "5x5 Tic-Tac-Toe")
+    (description "Tic-Tac-Toe adapted to a 5x5 grid.  
+        One side takes the Red side and the other takes the Blue.  
+        Players alternate placing their balls on open spots.  
+        The object is to get four balls in a row horizontally, vertically, or diagonally.  
+        Otherwise it's a draw.")
+    (players Blue Red)
+    (turn-order Blue Red)
+    (board
+        (image "images\TTT5x5.png")
+        (grid
+            (start-rectangle 0 0 50 50)
+            (dimensions ;5x5
+                ("a/b/c/d/e" (50 0)) ; columns
+                ("5/4/3/2/1" (0 50)) ; rows
+            )
+            (directions (n 0 -1) (e 1 0) (ne 1 -1) (nw -1 -1)) )
+         )
+    (piece (name man))
+    (piece
+        (name Ball)
+        (image Blue "images\bballs.png"
+               Red "images\rballs.png")
+        (help "Ball: drops on any empty square")
+        (drops (add-to-empty))
+    )
+
+    (board-setup
+        (Blue (Ball off 99))
+        (Red (Ball off 99))
+    )
+
+   (win-condition (Blue Red)
+        (or (relative-config Ball n  Ball n  Ball n  Ball)
+            (relative-config Ball e  Ball e  Ball e  Ball)
+            (relative-config Ball ne Ball ne Ball ne Ball)
+            (relative-config Ball nw Ball nw Ball nw Ball)
+        )
+    )
+)
+
+(variant
+   (title "Order and Chaos (6x6)")
+   (description "The players are called Order and Chaos.  
+      At each move, a player may place either an X or an O in an empty space.
+      Order wants to bring order into the game and wins by getting
+      5 O's or 5 X's in a row, horizontally, vertically, or diagonally.  
+      Otherwise Chaos wins.")
+   (players Order Chaos)
+   (turn-order Order (Chaos Order))
+   (board
+        (image "images\ttt6x6.png")
+        (grid
+            (start-rectangle 12 13 60 61) ; top-left position
+            (dimensions
+                ("a/b/c/d/e/f" (56 0)) ; columns
+                ("6/5/4/3/2/1" (0 55))) ; rows
+            (directions (n -1 0) (e 0 1) (nw -1 -1) (ne -1 1))
+        )
+   )
+   (piece (name man))
+   (piece
+        (name X)
+        (image Order "images\SmallX.png")
+        (drops (add-to-empty))
+   )
+   (piece
+        (name O)
+        (image Order "images\SmallO.png")
+        (drops (add-to-empty))
+   )
+   (board-setup
+        (Order (X off 36) (O off 36))
+   )
+
+   (win-condition (Chaos) stalemated)
+   (loss-condition (Order) stalemated)
+   (win-condition (Order)
+        (or (relative-config X n X n X n X n X)
+            (relative-config X e X e X e X e X)
+            (relative-config X ne X ne X ne X ne X)
+            (relative-config X nw X nw X nw X nw X)
+            (relative-config O n O n O n O n O)
+            (relative-config O e O e O e O e O)
+            (relative-config O ne O ne O ne O ne O)
+            (relative-config O nw O nw O nw O nw O)
+        )
+   )
+)
+
+(variant
+    (title "+ and x Tic-Tac-Toe")
+    (description "One side takes Red and the other side takes Blue.  
+      Players alternate placing their counters, in plus orientation, on open spots.  
+      Alternatively a counter can be moved one square in the direction of one of its arrows.  
+      Each movement causes the counter to spin 45 degrees so that its arrows face different directions.
+      If it moves on top of an enemy piece it captures it.  
+      The object is to get three of your counters (in the same orientation), in a row horizontally, vertically, or diagonally.  
+      Otherwise it's a draw.")
+    (players Red Blue)
+    (turn-order Red Blue)
+    (board
+        (image "images\TTTbrd.png")
+        (grid
+            (start-rectangle 10 10 95 95)
+            (dimensions
+                ("A-/B-/C-" (0 120))
+                ("1/2/3" (120 0)))
+            (directions (n -1 0) (e 0 1) (s 1 0) (w 0 -1) (nw -1 -1) (ne -1 1) (sw 1 -1) (se 1 1))
+        )
+    )
+    (piece (name man))
+    (piece
+        (name Plus)
+        (image Red  "images\redplus.png"
+               Blue "images\blueplus.png")
+        (help "Plus: drops on any empty square or moves by its arrows")
+        (drops (add-to-empty))
+        (moves (n (add X)) (s (add X)) (e (add X)) (w (add X)))
+    )
+    (piece
+        (name X)
+        (image Red "images\redx.png" Blue "images\bluex.png")
+        (moves (ne (add Plus)) (se (add Plus)) (nw (add Plus)) (sw (add Plus)))
+    )
+    (board-setup
+        (Red (Plus off 99))
+        (Blue (Plus off 99))
+    )
+    (win-condition (Red Blue)
+        (or (absolute-config X (A-1 A-2 A-3))
+            (absolute-config X (B-1 B-2 B-3))
+            (absolute-config X (C-1 C-2 C-3))
+            (absolute-config X (A-1 B-1 C-1))
+            (absolute-config X (A-2 B-2 C-2))
+            (absolute-config X (A-3 B-3 C-3))
+            (absolute-config X (A-1 B-2 C-3))
+            (absolute-config X (A-3 B-2 C-1))
+            (absolute-config Plus (A-1 A-2 A-3))
+            (absolute-config Plus (B-1 B-2 B-3))
+            (absolute-config Plus (C-1 C-2 C-3))
+            (absolute-config Plus (A-1 B-1 C-1))
+            (absolute-config Plus (A-2 B-2 C-2))
+            (absolute-config Plus (A-3 B-3 C-3))
+            (absolute-config Plus (A-1 B-2 C-3))
+            (absolute-config Plus (A-3 B-2 C-1))
+        )
+     )
+)
+
+(variant
+    (title "Beer Square")
+    (description "The object is to get three identical glasses in a row (Full, Half-Empty or Empty).  
+        You can drop any type of mug on an empty square.  
+        You can `drink` from any partially-full mug and make it less full.
+        The player who makes three in a row is the winner. 
+        Otherwise it's a draw.")
+    (players Bob Doug MrBeer)
+    (turn-order (Bob MrBeer) (Doug MrBeer))
+    (piece (name man))
+    (piece
+        (name Full-Mug)
+        (image MrBeer "images\mugfull.png")
+        (help "Full-Mug: drops on any empty square")
+        (drops (add-to-empty))
+    )
+    (piece
+        (name Half-Mug)
+        (image MrBeer "images\mughalf.png")
+        (help "Half-Mug: drops on any empty square, or on a Full-Mug")
+        (drops ((verify 
+                  (and 
+                    (not-piece? Half-Mug) 
+                    (not-piece? Empty-Mug)) 
+                  ) add) )
+    )
+    (piece
+        (name Empty-Mug)
+        (image MrBeer "images\mugempty.png")
+        (help "Empty-Mug: drops on any empty square, or on a Full or Half-Mug")
+        (drops ((verify (not-piece? Empty-Mug)) add) )			
+    )
+    (board
+        (image "images\BarTTTbrd.png")
+        (grid
+            (start-rectangle 16 16 112 112) ; top-left position
+            (dimensions ;3x3
+                ("A-/B-/C-" (0 112)) ; rows
+                ("1/2/3" (112 0))) ; columns
+            (directions (n -1 0) (e 0 1) (nw -1 -1) (ne -1 1))
+        )
+    )
+    (board-setup
+        (MrBeer (Full-Mug off 99) (Half-Mug off 99) (Empty-Mug off 99))
+    )
+    (win-condition (MrBeer)
+        (or (relative-config Full-Mug n Full-Mug n Full-Mug)
+            (relative-config Half-Mug n Half-Mug n Half-Mug)
+            (relative-config Empty-Mug n Empty-Mug n Empty-Mug)
+
+            (relative-config Full-Mug e Full-Mug e Full-Mug)
+            (relative-config Half-Mug e Half-Mug e Half-Mug)
+            (relative-config Empty-Mug e Empty-Mug e Empty-Mug)
+
+            (relative-config Full-Mug ne Full-Mug ne Full-Mug)
+            (relative-config Half-Mug ne Half-Mug ne Half-Mug)
+            (relative-config Empty-Mug ne Empty-Mug ne Empty-Mug)
+
+            (relative-config Full-Mug nw Full-Mug nw Full-Mug)
+            (relative-config Half-Mug nw Half-Mug nw Half-Mug)
+            (relative-config Empty-Mug nw Empty-Mug nw Empty-Mug)
+       )
+    )
+)
+
+(variant
+    (title "Traffic Lights")
+    (description "The object is to get three identical lights in a row (Red, Yellow or Green).  
+        On your move, you can drop a Red light on an empty square, change a Red light to Yellow, 
+        or change a Yellow light to Green.
+        The player who completes a row of three is the winner.
+        Otherwise it's a draw.")
+
+    (players Bob Doug MrLight)
+    (turn-order (Bob MrLight) (Doug MrLight))
+    (piece (name man))
+    (board
+        (image "images\traffictttbrd.png")
+        (grid
+            (start-rectangle 16 16 112 112) ; top-left position
+            (dimensions ;3x3
+                ("A-/B-/C-" (0 112)) ; rows
+                ("1/2/3" (112 0))) ; columns
+            (directions (n -1 0) (e 0 1) (nw -1 -1) (ne -1 1))
+        )
+    )
+    (piece
+        (name Red-Light)
+        (image MrLight "images\redtraffic.png" "ball:red")
+        (help "Red-Light: drops on any empty square")
+        (drops (add-to-empty))
+    )
+    (piece
+        (name Yellow-Light)
+        (image MrLight "images\yellowtraffic.png" "ball:yellow")
+        (help "Yellow-Light: drops on any empty square or Red-Light")
+        (drops ((verify (piece? Red-Light)) add) )			
+    )
+    (piece
+        (name Green-Light)
+        (image MrLight "images\greentraffic.png" "ball:green")
+        (help "Green-Light: drops on any empty square or Yellow-Light")
+        (drops ((verify (piece? Yellow-Light)) add) )			
+    )
+    (board-setup
+        (MrLight (Red-Light off 99) (Yellow-Light off 99) (Green-Light off 99))
+    )
+    (win-condition (MrLight)
+        (or (relative-config Red-Light n Red-Light n Red-Light)
+            (relative-config Yellow-Light n Yellow-Light n Yellow-Light)
+            (relative-config Green-Light n Green-Light n Green-Light)
+
+            (relative-config Red-Light e Red-Light e Red-Light)
+            (relative-config Yellow-Light e Yellow-Light e Yellow-Light)
+            (relative-config Green-Light e Green-Light e Green-Light)
+
+            (relative-config Red-Light ne Red-Light ne Red-Light)
+            (relative-config Yellow-Light ne Yellow-Light ne Yellow-Light)
+            (relative-config Green-Light ne Green-Light ne Green-Light)
+
+            (relative-config Red-Light nw Red-Light nw Red-Light)
+            (relative-config Yellow-Light nw Yellow-Light nw Yellow-Light)
+            (relative-config Green-Light nw Green-Light nw Green-Light)
+       )
+    )
+)
+
+(variant
+   (title "Nu Tic-Tac-Toe")
+   (description "Move your pieces one square at a time in any direction 
+                 to make three in a row in any direction.
+      The player who gets three in a row wins the game. 
+      Otherwise it's a draw.")
+
+   (players Red Blue)
+   (turn-order Blue Red)
+   (board
+        (image "images\Chess4x5.png")
+        (grid
+          (start-rectangle 5 5 53 53)
+          (dimensions
+            ("a/b/c/d" (49 0)) ; files
+            ("5/4/3/2/1" (0 49)) ; ranks
+          )
+          (directions (n 0 -1) (e 1 0) (s 0 1) (w -1 0)
+                      (ne 1 -1) (nw -1 -1) (se 1 1) (sw -1 1)
+          )
+       )
+   )
+   (piece (name man))
+   (piece
+        (image Blue "images\bballs.png"
+               Red "images\rballs.png")
+        (name Ball)
+        (help "Ball: moves one step to any adjacent empty square")
+        (moves 
+            (step n)
+            (step e)
+            (step s)
+            (step w)
+            (step ne)
+            (step nw)
+            (step se)
+            (step sw)
+        )
+   )
+   (board-setup
+        (Blue (Ball a1 c1 b5 d5))
+        (Red (Ball b1 d1 a5 c5))
+   )
+
+   (draw-condition (Red Blue) stalemated)
+   (win-condition (Red Blue)
+        (or (relative-config Ball  n Ball  n Ball)
+            (relative-config Ball  e Ball  e Ball)
+            (relative-config Ball ne Ball ne Ball)
+            (relative-config Ball nw Ball nw Ball)
+        )
+    )
+)
+
+(variant
+   (title "3D Tic-Tac-Toe")
+   (description "The object is to get four of marks in a row horizontally, vertically,  or diagonally.  
+      One side takes Blue and the other side takes Red.  
+      Players alternate placing Balls on open intersections.  
+      The Four-in-a-row can be formed along any line.
+      Otherwise it's a draw.")
+   (players Blue Red)
+   (turn-order Blue Red)
+   (board
+        (image "images\Qubic.png")
+        (grid
+            (start-rectangle 4 4 31 31) ; top-left position
+            (dimensions ;4x4x4
+                ("I-/II-/III-/IV-" (0 80))
+                ("a/b/c/d" (58 0))
+                ("1/2/3/4" (29 14))
+            )
+            (directions (n -1 0 0) (e 0 1 0) (nw -1 -1 0) (ne -1 1 0)
+                        (up 0 0 1) (upn -1 0 1) (upe 0 1 1)  
+                        (ups 1 0 1) (upw 0 -1 1) (upne -1 1 1)
+                        (upnw -1 -1 1) (upse 1 1 1) (upsw 1 -1 1)
+            )   
+        )
+   )
+   (piece (name man))
+   (piece
+        (name Ball)
+        (help "Ball: drops on any empty square")
+        (image Blue "images\sbluball.png"
+               Red "images\sredball.png")
+        (drops (add-to-empty))
+   )
+   (board-setup
+        (Blue (Ball off 32))
+        (Red (Ball off 32))
+   )
+
+   (draw-condition (Blue Red) stalemated)
+   (win-condition (Blue Red)
+        (or (relative-config Ball n Ball n Ball n Ball)
+            (relative-config Ball e Ball e Ball e Ball)
+            (relative-config Ball ne Ball ne Ball ne Ball)
+            (relative-config Ball nw Ball nw Ball nw Ball)
+            (relative-config Ball up Ball up Ball up Ball)
+            (relative-config Ball upn Ball upn Ball upn Ball)
+            (relative-config Ball upe Ball upe Ball upe Ball)
+            (relative-config Ball upw Ball upw Ball upw Ball)
+            (relative-config Ball ups Ball ups Ball ups Ball)
+            (relative-config Ball upne Ball upne Ball upne Ball)
+            (relative-config Ball upnw Ball upnw Ball upnw Ball)
+            (relative-config Ball upse Ball upse Ball upse Ball)
+            (relative-config Ball upsw Ball upsw Ball upsw Ball)
+        )
+    )
+)
+
+(variant
+   (title "Losing 3D Tic-Tac-Toe")
+   (description "The object is to avoid getting four pieces in a row horizontally,  vertically, or diagonally.  
+       One side takes Blue and the other side takes Red.
+       Players alternate placing balls on open intersections. 
+       If neither side gets four in a row, then it's a draw.  
+       The Four-in-a-row can be formed along any line.
+       Otherwise it's a draw.")
+   (players Blue Red)
+   (turn-order Blue Red)
+   (board
+        (image "images\Qubic.png")
+        (grid
+            (start-rectangle 4 4 31 31) ; top-left position
+            (dimensions ;4x4x4
+                ("I-/II-/III-/IV-" (0 80))
+                ("a/b/c/d" (58 0))
+                ("1/2/3/4" (29 14))
+            )
+            (directions (n -1 0 0) (e 0 1 0) (nw -1 -1 0) (ne -1 1 0)
+                        (up 0 0 1) (upn -1 0 1) (upe 0 1 1)  
+                        (ups 1 0 1) (upw 0 -1 1) (upne -1 1 1)
+                        (upnw -1 -1 1) (upse 1 1 1) (upsw 1 -1 1)
+            )   
+       )
+   )
+  (board-setup
+        (Blue (Ball off 32))
+        (Red (Ball off 32))
+   )
+   (piece (name man))
+   (piece
+        (name Ball)
+        (help "Ball: drops on any empty square")
+        (image Blue "images\sbluball.png"
+               Red "images\sredball.png")
+        (drops (add-to-empty))
+   )
+ 
+   (loss-condition (Blue Red)
+        (or (relative-config Ball n Ball n Ball n Ball)
+            (relative-config Ball e Ball e Ball e Ball)
+            (relative-config Ball ne Ball ne Ball ne Ball)
+            (relative-config Ball nw Ball nw Ball nw Ball)
+            (relative-config Ball up Ball up Ball up Ball)
+            (relative-config Ball upn Ball upn Ball upn Ball)
+            (relative-config Ball upe Ball upe Ball upe Ball)
+            (relative-config Ball upw Ball upw Ball upw Ball)
+            (relative-config Ball ups Ball ups Ball ups Ball)
+            (relative-config Ball upne Ball upne Ball upne Ball)
+            (relative-config Ball upnw Ball upnw Ball upnw Ball)
+            (relative-config Ball upse Ball upse Ball upse Ball)
+            (relative-config Ball upsw Ball upsw Ball upsw Ball)
+        )
+    )
+)
+

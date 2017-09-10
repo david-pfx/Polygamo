@@ -1,0 +1,16 @@
+; base for unit testing
+(game
+  (title "testboard title")
+  (players X O)
+  (turn-order X O)
+  (board
+    (image "TestBase.png")
+    (grid
+      (start-rectangle 16 16 112 112) ; top-left position
+      (dimensions
+        ("A-/B-/C-" (0 112)) ; rows
+        ("1/2/3" (112 0))) ; columns
+      (directions (n -1 0) (e 0 1) (s 1 0) (w 0 -1))
+    )
+  )
+)

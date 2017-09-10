@@ -1,0 +1,54 @@
+; *** (Four Field) Kono
+
+; Created by Polyomino Games from various sources as a sample for Polygamo.
+; 
+; Portions may be copyright by Zillions Development and others.
+
+(define hop  ($1 (verify friend?) $1 (verify enemy?) add) )
+(define shift  ($1 (verify empty?) add) )
+
+(game
+   (title "Four Field Kono")
+   (description "Capture or block in all of your opponent's pieces.  You
+      can only capture a piece by first jumping over one of your own
+      pieces then landing on it.")
+   (players Red Blue)
+   (turn-order Red Blue)
+   (board
+      (image "images\konobd.png")
+      (grid
+            (start-rectangle 9 9 59 59) 
+            (dimensions ;4x4
+                ("a/b/c/d" (47 0)) 
+                ("4/3/2/1" (0 47))
+            )
+            (directions (n 0 -1) (e 1 0) (s 0 1) (w -1 0))
+      ) 
+   )
+   (piece
+      (image Blue "images\blueball.bmp"
+             Red "images\redball.bmp")
+      (name Ball)
+      (description "A Ball can move up, down, left or right.  To capture,
+                    the ball must first jump over one of its own men, then
+                    land on the opponent.")
+      (help "Ball: moves up, down, left, right, captures-jumps over like ball")
+      (moves
+            (hop n)
+            (hop s)
+            (hop e)
+            (hop w)
+            (shift n)
+            (shift s)
+            (shift e)
+            (shift w)
+      )
+   )
+   (board-setup
+        (Blue (Ball off 99 a3 b3 c3 d3 a4 b4 c4 d4))
+        (Red  (Ball off 99 a1 b1 c1 d1 a2 b2 c2 d2))
+   )
+
+   (loss-condition (Red Blue) stalemated)
+   (loss-condition (Red Blue) (pieces-remaining 0))
+)

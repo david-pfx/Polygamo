@@ -1,0 +1,7 @@
+/Library
+/Temp
+*.suo
+/Assets/*.dll
+/Games
+/Build
+/old

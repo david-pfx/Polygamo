@@ -1,0 +1,35 @@
+; base for unit testing
+(game
+  (title "testgame title")
+  (description "testgame description")
+  (history "testgame history")
+  (strategy "testgame strategy")
+
+  (capture-sound "capture.sound")
+  (change-sound "change.sound")
+  (click-sound "click.sound")
+  (draw-sound "draw.sound")
+  (drop-sound "drop.sound")
+  (loss-sound "loss.sound")
+  (move-sound "move.sound")
+  (opening-sound "opening.sound")
+  (release-sound "release.sound")
+  (win-sound "win.sound")
+  (music "music.sound")
+  (solution "solution.polys")
+
+  (players X O)
+  (turn-order X O)
+
+  (allow-flipping true)
+  (animate-captures true)
+  (animate-drops true)
+  (include-off-pieces true)
+  (maximal-captures true)
+  (pass-partial true)
+  (pass-turn true)
+  (recycle-captures true)
+  (recycle-promotions true)
+
+  (board)
+)

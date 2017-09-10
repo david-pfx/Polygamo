@@ -1,0 +1,34 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 14
+VisualStudioVersion = 14.0.25420.1
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PolygamoLib", "PolygamoLib\PolygamoLib.csproj", "{44148BC8-B83C-4173-8AE8-68888E963E69}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PolygamoMain", "PolyMain\PolygamoMain.csproj", "{333B26DF-AFE1-4983-AA52-B9FF53F33A55}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PolygamoTest", "PolygamoTest\PolygamoTest.csproj", "{E1D09C9E-790B-4A55-9AF8-63ECE32500B8}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{44148BC8-B83C-4173-8AE8-68888E963E69}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{44148BC8-B83C-4173-8AE8-68888E963E69}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{44148BC8-B83C-4173-8AE8-68888E963E69}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{44148BC8-B83C-4173-8AE8-68888E963E69}.Release|Any CPU.Build.0 = Release|Any CPU
+		{333B26DF-AFE1-4983-AA52-B9FF53F33A55}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{333B26DF-AFE1-4983-AA52-B9FF53F33A55}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{333B26DF-AFE1-4983-AA52-B9FF53F33A55}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{333B26DF-AFE1-4983-AA52-B9FF53F33A55}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E1D09C9E-790B-4A55-9AF8-63ECE32500B8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E1D09C9E-790B-4A55-9AF8-63ECE32500B8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E1D09C9E-790B-4A55-9AF8-63ECE32500B8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E1D09C9E-790B-4A55-9AF8-63ECE32500B8}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

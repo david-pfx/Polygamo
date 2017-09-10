@@ -1,0 +1,49 @@
+; sample game for basic Poly testing
+; original source: Zillions docs
+(game
+  (title "Tic-Tac-Toe")
+  (description "The game is played on a 3 by 3 grid between players X and O.
+    Player X goes first. Each player alternately drops a man in an empty square.
+    The game is won if either side gets three in a row, horizontally,
+    vertically, or diagonally. Otherwise it's a draw.")
+  (history "Tic-Tac-Toe is an old game and is often played when there are
+    no moveable pieces available, by drawing or carving marks.
+    It is played all over the world under various names, such as 'Noughts and Crosses' in
+    England.")
+  (strategy "With perfect play, Tic-Tac-Toe is a draw. First player has the 
+    advantage, provided the first move is centre or corner. Most won games are achieved
+    by leaving two open twos that cannot both be blocked.")
+  (players X O)
+  (turn-order X O)
+  (board
+    (image "images\TTTbrd.png")
+    (grid
+      (start-rectangle 16 16 112 112) ; top-left position
+      (dimensions
+        ("A-/B-/C-" (0 112)) ; rows
+        ("1/2/3" (112 0))) ; columns
+      (directions (n -1 0) (e 0 1) (nw -1 -1) (ne -1 1))
+    )
+  )
+  (piece
+    (name man)
+    (help "Man: drops on any empty space")
+    (image X "images\TTTX.png"
+           O "images\TTTO.png")
+    (drops ((verify empty?) add))
+  )
+  (board-setup
+    (X (man off 5))
+    (O (man off 5))
+  )
+
+  (draw-condition (X O) stalemated)
+  (win-condition (X O)
+    (or (relative-config man n man n man)
+        (relative-config man e man e man)
+        (relative-config man ne man ne man)
+        (relative-config man nw man nw man)
+    )
+  )
+)
+
