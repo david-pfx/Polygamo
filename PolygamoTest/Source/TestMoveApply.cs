@@ -56,7 +56,7 @@ namespace PolygamoTest {
       };
       for (int i = 0; i < matrix.GetLength(0); i++) {
         var tp = String.Format(testprog, matrix[i, 0]);
-        var game = PolyGame.Create("moveapply", new StringReader(tp));
+        var game = PolyGame.CreateInner("moveapply", new StringReader(tp));
         if (game.LegalMoves.Count > 0) game.MakeMove(0);
         var result = game.PlayedPieces
           .Select(p => Util.Join(",", p.Position, p.Player, p.Piece))
@@ -112,7 +112,7 @@ namespace PolygamoTest {
       };
       for (int i = 0; i < matrix.GetLength(0); i++) {
         var tp = String.Format(testprog, matrix[i, 0]);
-        var game = PolyGame.Create("moveapply", new StringReader(tp));
+        var game = PolyGame.CreateInner("moveapply", new StringReader(tp));
         if (game.LegalMoves.Count > 0) game.MakeMove(0);
         var result = game.PlayedPieces
           .Select(p => Util.Join(",", p.Position, p.Player, p.Piece))
@@ -120,6 +120,39 @@ namespace PolygamoTest {
         Assert.AreEqual(matrix[i, 1], result, matrix[i, 0]);
       }
     }
+
+    // moves that depend on symmetry
+    [TestMethod]
+    public void MoveSymmetry() {
+      Logger.Open(1);
+      var testprog =
+        @"(include ""testincl.poly"")" +
+        @"(game (gamestub1)" +
+        @" (board (boardgrid45) (symmetry O (n s) (w e)) )" +
+        @" (board-setup (X (man B-2)) (O (man C-3)) )" +
+        @" (piece (name man) (moves {0}))" +
+        @")";
+
+      // board position after one move by each side
+      var matrix = new string[,] {
+        { "(add)                          ", "B-2,X,man;C-3,O,man" },
+        { "(n add)                        ", "A-2,X,man;D-3,O,man" },
+        { "(s add)                        ", "C-2,X,man;D-3,O,man" },
+        { "(e add)                        ", "B-3,X,man;C-4,O,man" },
+        { "(w add)                        ", "B-1,X,man;C-4,O,man" },
+      };
+      for (int i = 0; i < matrix.GetLength(0); i++) {
+        var tp = String.Format(testprog, matrix[i, 0]);
+        var game = PolyGame.CreateInner("moveapply", new StringReader(tp));
+        if (game.LegalMoves.Count > 0) game.MakeMove(0);
+        if (game.LegalMoves.Count > 0) game.MakeMove(0);
+        var result = game.PlayedPieces
+          .Select(p => Util.Join(",", p.Position, p.Player, p.Piece))
+          .OrderBy(s => s).Join(";");
+        Assert.AreEqual(matrix[i, 1], result, matrix[i, 0]);
+      }
+    }
+
 
     // test apply move for piece flags
     [TestMethod]
@@ -147,7 +180,7 @@ namespace PolygamoTest {
       };
       for (int i = 0; i < matrix.GetLength(0); i++) {
         var tp = String.Format(testprog, matrix[i, 0]);
-        var game = PolyGame.Create("moveapply", new StringReader(tp));
+        var game = PolyGame.CreateInner("moveapply", new StringReader(tp));
         if (game.LegalMoves.Count > 0) game.MakeMove(0);
         var result = game.PlayedPieces
           .Select(p => Util.Join(",", p.Position, p.Player, p.Piece, p.Flags))
@@ -200,7 +233,7 @@ namespace PolygamoTest {
         { 'S', g=>g.Restart() },
       };
       for (int i = 0; i < matrix.GetLength(0); i++) {
-        var game = PolyGame.Create("undoredo", new StringReader(testprog));
+        var game = PolyGame.CreateInner("undoredo", new StringReader(testprog));
         foreach (var ch in matrix[i, 0])
           action[ch](game);
         var result = game.TurnPlayer + ";" + game.PlayedPieces
@@ -245,7 +278,7 @@ namespace PolygamoTest {
         { 'S', g=>g.Restart() },
       };
       for (int i = 0; i < matrix.GetLength(0); i++) {
-        var game = PolyGame.Create("played", new StringReader(testprog));
+        var game = PolyGame.CreateInner("played", new StringReader(testprog));
         foreach (var ch in matrix[i, 0])
           action[ch](game);
         var result = game.TurnPlayer + ";" + game.MovesPlayed

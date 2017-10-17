@@ -81,15 +81,19 @@ namespace Poly.Common {
       Write(level, msg, false);
     }
     public static void WriteLine(int level, string msg) {
+      if (level > Level) return;
       Write(level, msg, true);
     }
     public static void WriteLine(int level) {
+      if (level > Level) return;
       Write(level, "", true);
     }
     public static void Write(int level, string format, params object[] args) {
+      if (level > Level) return;
       Write(level, String.Format(format, args), false);
     }
     public static void WriteLine(int level, string format, params object[] args) {
+      if (level > Level) return;
       Write(level, String.Format(format, args), true);
     }
     public static void WriteLine(string format, params object[] args) {

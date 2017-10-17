@@ -32,24 +32,38 @@ namespace PolygamoUnity {
 
   ///////////////////////////////////////////////////////////////////////////////////////////////////
   /// <summary>
-  /// implements data model for Board
+  /// implements data model for Game and Board
   /// </summary>
-  public class BoardModel {
+  public class GameBoardModel {
+    internal static string LastError { get { return PolyGame.LastError; } }
+
     internal IList<string> GameList { get { return _polygame.Menu; } }
     internal IList<string> ThumbnailList { get { return _polygame.Thumbnails; } }
 
-    internal string ScriptName { get; private set; }
+    internal ScriptInfo Script { get; private set; }
     internal string Title { get { return _polygame.Title; } }
-    internal string Help { get { return _polygame.GetOption("description") ?? "No help available"; } }
-    internal string DefaultPlayer { get { return _polygame.Players[0]; } }
+    internal string Description { get { return _polygame.GetOption("description"); } }
+    internal string History { get { return _polygame.GetOption("history"); } }
+    internal string Strategy { get { return _polygame.GetOption("strategy"); } }
+    internal string MyPlayer { get; private set; }
     internal string Player { get { return HasResult ? _polygame.ResultPlayer : _polygame.TurnPlayer; } }
     internal IList<string> Images { get { return _polygame.BoardImages; } }
     internal IList<PolyPieceImage> PieceImages { get { return _polygame.PieceImages; } }
+    internal int StepCount {
+      get { return _polygame.StepCount; }
+      set { _polygame.StepCount = value; }
+    }
+    internal int MaxDepth {
+      get { return _polygame.MaxDepth; }
+      set { _polygame.MaxDepth = value; }
+    }
+    internal float ThinkTime { get; set; }
 
     internal Rect BoundingRect { get { return _bounding; } }
     internal int MoveCount { get; private set; }
     internal TimeSpan TimePlayed { get; private set; }
     internal bool IsThinking { get; set; }
+    internal bool IsMyTurn { get { return MyPlayer == Player; } }
 
     internal int TimePlayedSeconds { get { return (int)(TimePlayed.Ticks / 10000000); } }
     internal ResultKinds GameResult {
@@ -72,25 +86,29 @@ namespace PolygamoUnity {
     TileModel[] _tiles;
     Rect _bounding;
 
-    internal static BoardModel Create(GameManager game, string scriptname) {
-      var gameprog = game.Items.LoadScript(scriptname, scriptname);
+    // create game model by parsing script
+    internal static GameBoardModel Create(GameManager game, ScriptInfo script) {
+      var gameprog = game.Items.LoadScript(script);
       if (gameprog == null) return null;
       // guaranteed never to raise exception!!!
-      var engine = PolyGame.Create(scriptname, new StringReader(gameprog));
-      return new BoardModel {
-        ScriptName = scriptname,
+      var engine = PolyGame.Create(script.Filename, new StringReader(gameprog));
+      return (engine == null) ? null : new GameBoardModel {
+        Script = script,
         _polygame = engine,
       }.Setup();
     }
 
-    internal BoardModel Create(int index) {
-      return new BoardModel {
-        ScriptName = ScriptName,
+    // create game model from existing by selecting variant
+    internal GameBoardModel Create(int index) {
+      return new GameBoardModel {
+        Script = Script,
         _polygame = this._polygame.Create(index)
       }.Setup();
     }
 
-    BoardModel Setup() {
+    GameBoardModel Setup() {
+      MyPlayer = _polygame.FirstPlayer;
+      //MyPlayer = _polygame.Players[0];
       _tiles = _polygame.Positions
         .Where(s => !s.IsDummy)
         .Select(s => TileModel.Create(this, s.Name,
@@ -103,8 +121,8 @@ namespace PolygamoUnity {
 
     //==========================================================================
     // start a new game
-    internal void Start() {
-      _polygame.NewBoard(ChooserKinds.Mcts);
+    internal void NewGame() {
+      _polygame.NewBoard(ChooserKinds.Mcts, StepCount, MaxDepth);
       TimePlayed = TimeSpan.Zero;
       UpdatePieces();
     }
@@ -127,6 +145,13 @@ namespace PolygamoUnity {
       if (IsGameOver) return;
       MoveCount++;
       _polygame.RedoMove();
+      UpdatePieces();
+    }
+
+    internal void Pass() {
+      if (IsGameOver || !_polygame.CanPass) return;
+      MoveCount++;
+      _polygame.MakeMove(0);
       UpdatePieces();
     }
 
@@ -165,17 +190,23 @@ namespace PolygamoUnity {
     }
 
     // choose a move in limited steps, return true if complete
-    internal bool UpdateChooser(int steps) {
-      return _polygame.UpdateChooser(steps);
+    internal bool UpdateChooser() {
+      return _polygame.UpdateChooser();
     }
 
     // return chosen move, other info
     internal int ChosenMove { get { return _polygame.ChosenMove.Index; } }
     internal int VisitCount { get { return _polygame.VisitCount; } }
     internal double Weight { get { return _polygame.Weight; } }
+    public bool CanPass { get { return _polygame.CanPass; } }
+    public bool CanUndo { get { return _polygame.CanUndo; } }
 
     internal IList<PolyMove> GetLegalMoves(string position) {
       return _polygame.LegalMoves.Where(m => m.Position1 == position).ToList();
+    }
+
+    internal string GetMoveDisplay(int index) {
+      return _polygame.LegalMoves[index].ToString("P");
     }
 
     internal void SetPreview(string player, string position, string piece) {
@@ -207,9 +238,9 @@ namespace PolygamoUnity {
         return true;
       }
     }
-    internal BoardModel Board { get { return _model; } }
+    internal GameBoardModel Board { get { return _model; } }
 
-    BoardModel _model;
+    GameBoardModel _model;
     bool _ischanged;
 
     //--- overrides
@@ -217,7 +248,7 @@ namespace PolygamoUnity {
       return String.Format("[{0}:{1}]", Name, Rect);
     }
 
-    internal static TileModel Create(BoardModel model, string name, Rect rect) {
+    internal static TileModel Create(GameBoardModel model, string name, Rect rect) {
       return new TileModel() {
         _model = model,
         Name = name,
@@ -257,6 +288,7 @@ namespace PolygamoUnity {
         .Select(m => new MoveModel {
           Index = m.Index, Player = m.Player, Piece = m.Piece1,
           Position = m.Position1, NewPiece = m.Piece2, NewPosition = m.Position2,
+          Display = m.ToString("P"),
         })
         .Distinct()
         .ToList();
@@ -270,8 +302,10 @@ namespace PolygamoUnity {
     internal string Piece;
     internal string NewPosition;
     internal string NewPiece;
+    internal string Display;
 
     internal bool IsDual { get { return NewPosition != ""; } }
+
     public override string ToString() {
       return (!IsDual) ? String.Format("({0},{1},{2})", Player, Position, Piece)
         : String.Format("({0},{1},{2}->{2},{3})", Player, Position, Piece, NewPosition, NewPiece);

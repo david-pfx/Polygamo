@@ -118,7 +118,7 @@ namespace Poly.Compiler {
     internal static Symbol None = new Symbol() { Atom = Atoms.NUL, Name = "" };
 
     public override string ToString() {
-      return String.Format("{0}:{1}:{2}:{3}", Name, Atom, Kind, Level);
+      return String.Format("{0}:{1}:{2}:{3}:{4}", Name, Atom, Kind, DataType, Level);
     }
 
     // series of tests used by parser
@@ -126,12 +126,17 @@ namespace Poly.Compiler {
     internal bool IsIdent { get { return Atom == Atoms.IDENT; } }
     internal bool IsFunc { get { return Atom == Atoms.IDENT && Kind == SymKinds.PREDEF; } }
     internal bool IsValueIdent { get { return Atom == Atoms.IDENT && Kind == SymKinds.VALUE; } }
-    internal bool IsVoidFunc { get { return Atom == Atoms.IDENT && Kind == SymKinds.PREDEF 
+    internal bool IsVoidFunc { get { return this is BuiltinSymbol
                                      && (this as BuiltinSymbol).CallInfo.ReturnType == typeof(void); } }
-    internal bool IsValueFunc { get { return Atom == Atoms.IDENT && Kind == SymKinds.PREDEF 
+    internal bool IsValueFunc { get { return this is BuiltinSymbol
                                      && (this as BuiltinSymbol).CallInfo.ReturnType != typeof(void); } }
+    //internal bool IsVoidFunc { get { return Atom == Atoms.IDENT && Kind == SymKinds.PREDEF 
+    //                                 && (this as BuiltinSymbol).CallInfo.ReturnType == typeof(void); } }
+    //internal bool IsValueFunc { get { return Atom == Atoms.IDENT && Kind == SymKinds.PREDEF 
+    //                                 && (this as BuiltinSymbol).CallInfo.ReturnType != typeof(void); } }
     internal bool IsUndef { get { return Atom == Atoms.IDENT && Kind == SymKinds.UNDEF; } }
-    internal bool IsValue { get { return IsLiteral || IsValueIdent || IsValueFunc; } }
+    internal bool IsValue { get { return IsLiteral || IsValueIdent; } }
+    //internal bool IsValue { get { return IsLiteral || IsValueIdent || IsValueFunc; } }
     internal bool IsVariable { get { return IsIdent && Kind == SymKinds.VARIABLE; } }
     internal bool IsBase { get { return PredefScope == PredefScopes.BASE; } }
   }
@@ -308,8 +313,8 @@ namespace Poly.Compiler {
         AddMethod(binfo.Name, binfo, PredefScopes.BASE);
 
       //                                code                instance
-      AddBuiltinMethods(PredefScopes.BOARD, typeof(BoardCode), typeof(BoardDef), PredefKinds.PROG);
       AddBuiltinMethods(PredefScopes.GAME , typeof(GameCode),  typeof(GameDef), PredefKinds.PROGM);
+      AddBuiltinMethods(PredefScopes.BOARD, typeof(BoardCode), typeof(BoardDef), PredefKinds.PROG);
       AddBuiltinMethods(PredefScopes.GOAL , typeof(GoalCode),  typeof(GoalDef), PredefKinds.EXPR);
       AddBuiltinMethods(PredefScopes.GRID,  typeof(GridCode),  typeof(GridDef), PredefKinds.PROG);
       AddBuiltinMethods(PredefScopes.MENU , typeof(MenuCode),  typeof(MenuDef), PredefKinds.PROG);
@@ -362,7 +367,6 @@ namespace Poly.Compiler {
 
       AddLiteral("true", BoolValue.True);
       AddLiteral("false", BoolValue.False);
-      AddLiteral("default", TextValue.Create("default"));
       AddLiteral("$lineno$", NumberValue.Zero);
       AddLiteral("$filename$", TextValue.Empty);
 

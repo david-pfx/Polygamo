@@ -39,14 +39,14 @@ namespace Poly.Common {
     public static Exception NullArg(string arg) {
       return new ArgumentNullException(arg);
     }
+    public static Exception OutOfRange(string arg) {
+      return new ArgumentOutOfRangeException(arg);
+    }
     public static Exception Invalid(string msg) {
       return new InvalidOperationException(msg);
     }
     public static Exception MustOverride(string arg) {
       return new NotImplementedException("must override " + arg);
-    }
-    public static Exception NotImpl(string msg) {
-      return new NotImplementedException(msg);
     }
     public static Exception Argument(string msg) {
       return new ArgumentException(msg);
@@ -57,6 +57,9 @@ namespace Poly.Common {
     public static Exception Fatal(string origin, string msg, params object[] args) {
       var fmsg = string.Format(msg, args);
       return new PolyException(ErrorKind.Fatal, "Fatal error ({0}): {1}", origin, msg);
+    }
+    public static Exception NotImpl(string msg) {
+      return new PolyException(ErrorKind.Fatal, "Not implemented: " + msg);
     }
     public static Exception Assert(string msg, params object[] args) {
       return new PolyException(ErrorKind.Assert, "Assertion failure: " + msg, args);

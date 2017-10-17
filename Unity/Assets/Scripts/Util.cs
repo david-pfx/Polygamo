@@ -109,8 +109,9 @@ namespace PolygamoUnity {
       return ret.Replace('\\', '/');
     }
 
-    public static byte[] LoadBinary(string folder, string name) {
-      var path = Path.Combine(Application.dataPath, Path.Combine(folder, name));
+    public static byte[] LoadBinary(string folder, string filename) {
+      var path = Path.Combine(folder, filename);
+      if (!File.Exists(path)) return null;
       using (var fs = new FileStream(path, FileMode.Open)) {
         var buf = new byte[fs.Length];
         fs.Read(buf, 0, (int)fs.Length);
@@ -119,7 +120,8 @@ namespace PolygamoUnity {
     }
 
     public static string LoadText(string folder, string name) {
-      var path = Path.Combine(Application.dataPath, Path.Combine(folder, name));
+      var path = Path.Combine(folder, name);
+      if (!File.Exists(path)) return null;
       using (var sr = new StreamReader(path)) {
         return sr.ReadToEnd();
       }

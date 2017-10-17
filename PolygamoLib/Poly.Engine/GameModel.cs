@@ -42,7 +42,7 @@ namespace Poly.Engine {
   /// </summary>
   internal struct GameState {
     internal BoardModel Board;
-    internal ChoiceManager Chooser;
+    internal ChoiceMaker Chooser;
     public override string ToString() {
       return Board.ToString() + "," + Chooser.ToString();
     }
@@ -77,6 +77,11 @@ namespace Poly.Engine {
   internal class GameModel {
     // game def for this model
     internal GameDef Def { get; private set; }
+    // current overall state of game
+    internal GameStatusKinds Status { get; private set; }
+    // random number generator to be used by all; can be re-seeded
+    internal Random Rng { get; private set; }
+
     // current board position
     internal BoardModel CurrentBoard { get { return _states.Last().Board; } }
     // current move number (0..)
@@ -85,29 +90,40 @@ namespace Poly.Engine {
     }
     // current move number (0..)
     internal int MoveNumber { get { return _states.Count; } }
-    // current overall state of game
-    internal GameStatusKinds State { get; private set; }
     // chooser matched to current board
-    internal ChoiceManager Chooser { get { return _states.Last().Chooser; } }
-    // random number generator to be used by all; can be re-seeded
-    internal Random Rng { get; private set; }
+    internal ChoiceMaker Chooser { get { return _states.Last().Chooser; } }
+    // is Undo active?
+    internal bool CanUndo { get { return _states.Count > 1; } }
+
+    // chosen move, or random
+    internal int ChosenMove {
+      get {
+        return (Def.PlayerLookup[CurrentBoard.TurnPlayer].IsRandom) ? Rng.Next(CurrentBoard.LegalMoves.Count)
+          : (Chooser == null || Chooser.Index < 0) ? 0 : Chooser.Index;
+      }
+    }
 
     //--- impl
     List<GameState> _states;     // sequence of game states for moves made
     List<GameState> _redostates; // game states put here after undo
     GameCode _gamecode;
     ChooserKinds _chooserkind;
+    internal int _stepcount;    // steps per update (for new board)
+    internal int _maxdepth;     // max depth (for new board)
 
     //-- factories
 
     // create a game model with board & setup
-    internal static GameModel Create(GameDef gamedef) {
+    internal static GameModel Create(GameDef gamedef, ChooserKinds chooserkind = ChooserKinds.Mcts) {
       var gm = new GameModel {
         Def = gamedef,
-        _gamecode = gamedef.Code,
         Rng = new Random(),
+        _gamecode = gamedef.Code,
+        _chooserkind = chooserkind, 
+        _stepcount = 10,  // unuseful defaults
+        _maxdepth = 2,
       };
-      gm.NewBoard(ChooserKinds.First);
+      gm.NewBoard();
       return gm;
     }
 
@@ -132,10 +148,6 @@ namespace Poly.Engine {
       return _gamecode.CreateMoves(board);
     }
 
-    internal void Reseed(int seed) {
-      Rng = (seed < 0) ? new Random() : new Random(seed);
-    }
-
     //--- enquiries
 
     // get game result for board and its current player (as set)
@@ -145,25 +157,38 @@ namespace Poly.Engine {
       return result;
     }
 
-    // Set up a new board (start a new game)
-    internal void NewBoard(ChooserKinds chooserkind) {
+    //-- state change
+
+    // Set up a new board (start a new game), optionally specify chooser
+    internal void NewBoard() {
+      NewBoard(_chooserkind, _stepcount, _maxdepth);
+    }
+
+    internal void NewBoard(ChooserKinds chooserkind, int stepcount, int maxdepth) {
       _states = new List<GameState>();
       _redostates = new List<GameState>();
-      _chooserkind = chooserkind;
       var board = CreateBoard();
-      var chooser = ChoiceManager.Create(board, chooserkind);
+      // always start with default values from game def, but should change before update
+      var chooser = ChoiceMaker.Create(board, chooserkind, stepcount, maxdepth);
       AddState(chooser);
-      State = GameStatusKinds.Ready;
+      Status = GameStatusKinds.Ready;
+    }
+
+    internal void Reseed(int seed) {
+      Rng = (seed < 0) ? new Random() : new Random(seed);
     }
 
     // Make the move by index of legal moves for board
-    internal void MakeMove(int index) {
+    internal bool MakeMove(int index) {
       if (Chooser == null) throw Error.NullArg("chooser");
-      AddState(Chooser.MakeMove(index));
+      var newstate = Chooser.MakeMove(index);
+      if (newstate == null) return false;
+      AddState(newstate);
+      return true;
     }
 
     // Board is added after move generation and result checking
-    void AddState(ChoiceManager chooser) {
+    void AddState(ChoiceMaker chooser) {
       if (chooser == null) throw Error.NullArg("chooser");
       if (chooser.Choice == null) throw Error.NullArg("chooser.Choice");
       _redostates.Clear();
@@ -172,7 +197,14 @@ namespace Poly.Engine {
         Chooser = chooser,
       };
       _states.Add(state);
-      State = state.Board.HasResult ? GameStatusKinds.Finished : GameStatusKinds.Playing;
+      Status = state.Board.HasResult ? GameStatusKinds.Finished : GameStatusKinds.Playing;
+    }
+
+    // update chooser, but not for random players
+    internal bool UpdateChooser() {
+      if (Def.PlayerLookup[CurrentBoard.TurnPlayer].IsRandom) return true;
+      Chooser.Update();
+      return Chooser.Choice.IsDone;
     }
 
     // Undo last move by moving last board to redo list
@@ -210,7 +242,8 @@ namespace Poly.Engine {
     // board definition for static info
     internal BoardDef Def { get; private set; }
     // piece stores off board by player
-    internal Dictionary<PlayerValue, Dictionary<PieceValue, int>> OffStoreLookup { get { return _offstores; } }
+    internal Dictionary<Pair<PlayerValue,PieceValue>, int> OffStoreLookup { get { return _offstores; } }
+    //internal Dictionary<PlayerValue, Dictionary<PieceValue, int>> OffStoreLookup { get { return _offstores; } }
     // lookup on positions occupied
     internal Dictionary<PositionValue, PieceModel> PlayedPieceLookup { get { return _playedpieces; } }
     // generated drops and moves for player if no result yet
@@ -281,7 +314,7 @@ namespace Poly.Engine {
     GameDef _gamedef { get { return _game.Def; } }
     int _turnindex = 0;
     Dictionary<PositionValue, PieceModel> _playedpieces = new Dictionary<PositionValue, PieceModel>();
-    Dictionary<PlayerValue, Dictionary<PieceValue, int>> _offstores = new Dictionary<PlayerValue, Dictionary<PieceValue, int>>();
+    Dictionary<Pair<PlayerValue,PieceValue>, int> _offstores = new Dictionary<Pair<PlayerValue, PieceValue>, int>();
     // pieces captured on last move
     HashSet<PieceValue> _captured = new HashSet<PieceValue>();
     // move generation done
@@ -297,10 +330,6 @@ namespace Poly.Engine {
     public override string ToString() {
       return String.Format("Board<{0},{1},{2}:({3})>", _game.MoveNumber, CurrentPlayer, Result, 
         PlayedPieceLookup.Select(kv=>String.Format("{0}:{1}:{2}", kv.Key, kv.Value.Player, kv.Value.Piece)).Join());
-    }
-
-    internal Dictionary<PieceValue,int> GetOffStores(PlayerValue player) {
-      return OffStoreLookup[player];
     }
 
     // check friend/enemy based on CurrentPlayer
@@ -341,7 +370,7 @@ namespace Poly.Engine {
         LastTurn = board.Turn,
         _turnindex = board._turnindex + 1,
         _playedpieces = new Dictionary<PositionValue, PieceModel>(board._playedpieces),
-        _offstores = new Dictionary<PlayerValue, Dictionary<PieceValue, int>>(board._offstores),
+        _offstores = new Dictionary<Pair<PlayerValue, PieceValue>, int>(board._offstores),
       }.ApplyMove(move).GenerateNewState();
     }
 
@@ -363,9 +392,8 @@ namespace Poly.Engine {
     }
 
     internal bool AdjEnemy(PositionValue position) {
-      return IsValid(position)
-        && Def.LinkLookup.ContainsKey(position)
-        && Def.LinkLookup[position].Any(k => IsEnemy(k.To));
+      return IsValid(position) 
+        && Def.AdjacentIter(position, CurrentPlayer).Any(p => IsEnemy(p));
     }
 
     // true if no piece played here (also true if off board!?)
@@ -443,7 +471,7 @@ namespace Poly.Engine {
     // TODO: is repetition !!??
     // only called in phase 2
     internal bool Repetition() {
-      return false;
+      throw Error.NotImpl("repetition");
     }
 
     // stalemated means player to move has no moves
@@ -459,16 +487,15 @@ namespace Poly.Engine {
 
     // TODO: is checkmated !!??
     internal bool Checkmated(IList<PieceValue> pieces) {
-      return LegalMoves.Count == 0;
+      throw Error.NotImpl("checkmated");
     }
 
     //--- impl
 
     BoardModel SetupPieces() {
-      foreach (var player in _game.Def.PlayerLookup.Keys)
-        _offstores[player] = new Dictionary<PieceValue, int>();
       foreach (var setup in _game.Def.SetupItems) {
-        OffStoreLookup[setup.Player].Add(setup.Piece, setup.OffQuantity);
+        if (setup.OffQuantity > 0)
+          _offstores[Pair.Create(setup.Player, setup.Piece)] = setup.OffQuantity;
         foreach (var position in setup.Positions) {
           var piece = _game.CreatePiece(setup.Player, setup.Piece);
           _playedpieces[position] = piece;
@@ -525,14 +552,16 @@ namespace Poly.Engine {
       LegalMoves = new List<MoveModel>();
       // on setup always no result; otherwise check for all players that have a condition
       if (LastMove != null) {
-        for (int phase = 0; phase < 2 && Result == ResultKinds.None; ++phase) {
-          if (phase == 1) {
-            CurrentPlayer = TurnPlayer;
-            GenerateMoves();
-          }
-          foreach (var goal in _game.Def.Goals) {
-            CurrentPlayer = goal.Player;
-            SetMoveResult(_game.CheckGameResult(goal, this, phase == 1));
+        foreach (var goal in _game.Def.Goals) {
+          CurrentPlayer = goal.Player;
+          SetMoveResult(_game.CheckGameResult(goal, this, false));
+          if (Result != ResultKinds.None) break;
+        }
+        CurrentPlayer = TurnPlayer;
+        GenerateMoves();
+        if (Result == ResultKinds.None) {
+          foreach (var goal in _game.Def.Goals.Where(g => g.Player == TurnPlayer)) {
+            SetMoveResult(_game.CheckGameResult(goal, this, true));
             if (Result != ResultKinds.None) break;
           }
         }
@@ -563,8 +592,10 @@ namespace Poly.Engine {
       if (!_donemovegen) {
         LegalMoves.AddRange(_game.CreateDrops(this));
         LegalMoves.AddRange(_game.CreateMoves(this));
-        if (_game.Def.GetBoolProperty("pass turn")
-          || LegalMoves.Count == 0 && _game.Def.GetStringProperty("pass turn") == "forced")
+        var passoption = _game.Def.GetProperty("pass turn") ?? OptionValue.False;
+        var allowpass = passoption.Equals(OptionValue.True)
+                     || (LegalMoves.Count == 0 && passoption.Equals(OptionValue.Forced));
+        if (allowpass) 
           LegalMoves.Insert(0, MoveModel.Create(Turn.TurnPlayer, PositionValue.None, PieceValue.None));
         _donemovegen = true;
       }
@@ -639,8 +670,10 @@ namespace Poly.Engine {
       return String.Format("({0},{1},{2})", Player, Position, Piece);
     }
 
-    public string Format() {
-      return String.Format("Move[{0},{1},{2}]:{3}", Player, Position, Piece, MoveParts.Join(";"));
+    public string ToString(string arg) {
+      return (arg == "M") ? (IsPass ? "Pass" : MoveParts[0].ToString("M"))
+        : (arg == "P") ? (IsPass ? "Pass" : MoveParts.Select(m => m.ToString("M")).Join(", ")) 
+        : ToString();
     }
 
     // factory: parts default to empty
@@ -682,12 +715,15 @@ namespace Poly.Engine {
       { MoveKinds.Attrib,       "For piece {0} at {1}" },
     };
 
-    public string Format() {
-      var s = String.Format(_kindlookup[Kind], Piece, Position);
-      return (Kind == MoveKinds.Move || Kind == MoveKinds.Copy) ? String.Format("{0} to {1}", s, Final)
-        : (Kind == MoveKinds.Owner) ? String.Format("{0} to {1}", s, Player)
-        : (Kind == MoveKinds.Attrib) ? String.Format("{0} set {1} to {2}", s, Attribute, Value)
-        : s;
+    public string ToString(string arg) {
+      if (arg == "M") {
+        var s = String.Format(_kindlookup[Kind], Piece, Position);
+        return (Kind == MoveKinds.Move || Kind == MoveKinds.Copy) ? String.Format("{0} to {1}", s, Final)
+          : (Kind == MoveKinds.Owner) ? String.Format("{0} to {1}", s, Player)
+          : (Kind == MoveKinds.Attrib) ? String.Format("{0} set {1} to {2}", s, Attribute, Value)
+          : s;
+      }
+      return ToString();
     }
 
     // Create any kind of move except set attribute
@@ -742,6 +778,8 @@ namespace Poly.Engine {
       return new MoveGenState {
         Kind = kind, Position = position,
         TurnPlayer = turnplayer, Player = asplayer, Piece = piece,
+        //Kind = kind, TurnPlayer = turnplayer, Player = asplayer, Piece = piece,
+        //Position = position, From = position, To = position,
         Current = position, Mark = position,
       }.Reset();
     }
@@ -749,7 +787,7 @@ namespace Poly.Engine {
     // reset after Add
     MoveGenState Reset() {
       LastFrom = From;
-      LastTo = To;
+      LastTo = To ?? Current;
       From = Position;
       To = null;
       _move = MoveModel.Create(TurnPlayer, Position, Piece);
@@ -797,7 +835,7 @@ namespace Poly.Engine {
     }
 
     void AddPieceMove(PieceValue piece) {
-      Logger.WriteLine(5, "Add moves piece:{0} position:{1} from:{2} changes:{3} captures:{4}",
+      Logger.WriteLine(4, "Add moves piece:{0} position:{1} from:{2} changes:{3} captures:{4}",
         piece, To ?? Current, From, _changes.Count, _captures.Count);
       AddMovePart(CreateMovePart(piece));
       foreach (var movepart in _changes) AddMovePart(movepart);

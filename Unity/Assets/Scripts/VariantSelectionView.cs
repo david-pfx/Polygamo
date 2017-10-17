@@ -15,10 +15,10 @@ using UnityEngine;
 using UnityEngine.UI;
 using PolygamoUnity;
 
-public class SelectionView : MonoBehaviour {
+public class VariantSelectionView : MonoBehaviour {
 
   public Text TitleText;
-  public Text ItemTitleText;
+  public Text StatusbarText;
   public RectTransform ItemGrid;
   public GameObject SelectItemPrefab;
   public SelectModes SelectMode;
@@ -27,7 +27,7 @@ public class SelectionView : MonoBehaviour {
   public int GridHeight = 4;
 
   GameManager _game { get { return GameManager.Instance; } }
-  BoardModel _model { get { return _game.Model; } }
+  GameBoardModel _model { get { return _game.Model; } }
 
   int _pageno;
   RectTransform _holder;
@@ -35,27 +35,41 @@ public class SelectionView : MonoBehaviour {
   private float _itemsize;
   private Vector3 _origin;
   private Vector3 _scale;
+  UiManager _uimx;
 
   void Awake() {
+    _uimx = FindObjectOfType<UiManager>();
     TitleText.text = "Polygamo";
     gameObject.SetActive(false);
+  }
+
+  void Start() {
   }
 
   private void OnEnable() {
     ShowGameGrid(0);
   }
 
-  public void LeftButtonHandler() {
-    ShowGameGrid(_pageno - 1);
+  void Update() {
+    if (Input.GetKeyDown(KeyCode.LeftArrow)) LeftButtonHandler();
+    if (Input.GetKeyDown(KeyCode.RightArrow)) RightButtonHandler();
+    if (Input.GetKeyDown(KeyCode.S)) ScriptButtonHandler();
   }
 
-  public void RightButtonHandler() {
-    ShowGameGrid(_pageno + 1);
+  public void LeftButtonHandler(string input = "click") {
+    _uimx.DoButtonAction(input, "Scroll left", StatusbarText, () => ShowGameGrid(_pageno - 1));
   }
 
-  public void ScriptButtonHandler() {
-    var uimx = FindObjectOfType<UiManager>();
-    uimx.OpenPanel(SelectionPanelOther);
+  public void RightButtonHandler(string input = "click") {
+    _uimx.DoButtonAction(input, "Scroll right", StatusbarText, () => ShowGameGrid(_pageno + 1));
+  }
+
+  public void ScriptButtonHandler(string input = "click") {
+    _uimx.DoButtonAction(input, "Select game scripts", StatusbarText, () => _uimx.OpenPanel(SelectionPanelOther));
+  }
+
+  public void CloseButtonHandler(string input = "click") {
+    _uimx.DoButtonAction(input, "Close", StatusbarText, () => _uimx.CloseCurrent());
   }
 
   // build and show the selection grid
@@ -77,8 +91,10 @@ public class SelectionView : MonoBehaviour {
     _scale = new Vector3(_gridsize / _itemsize, _gridsize / _itemsize, 0);
     Util.Trace(3, "gridsize={0} itemsize={1} page={2} xbase={3}", _gridsize, _itemsize, page, offset);
 
-    TitleText.text = (SelectMode == SelectModes.Variant) ? _model.ScriptName + " variants" : "Game Scripts";
-    ItemTitleText.text = "";
+    TitleText.text = (SelectMode == SelectModes.Script) ? "Game Scripts"
+      : _model.Script.Filename + " variants";
+    StatusbarText.text = "";
+    //ItemTitleText.text = Application.dataPath;
     var objs = CreateGrid();
     StartCoroutine(FillGrid(objs, SelectMode, offset, count));
   }
@@ -107,18 +123,27 @@ public class SelectionView : MonoBehaviour {
   IEnumerator FillGrid(GameObject[] objs, SelectModes mode, int xbase, int xcount) {
     Util.Trace(3, "fill grid {0} {1} {2} {3}", objs.Length, mode, xbase, xcount);
     for (int i = 0; i < objs.Length; i++) {
-      objs[i].GetComponent<SelectItemView>().Setup(SelectAction, ItemTitleText, mode, xbase + i);
+      objs[i].GetComponent<VariantItemView>().Setup(SelectAction, StatusbarText, mode, xbase + i);
       objs[i].SetActive(true);
       yield return null;
     }
   }
 
   // respond to a click
-  private void SelectAction(int index) {
+  void SelectAction(int index) {
     Util.Trace(2, "Click! {0}", index);
     if (SelectMode == SelectModes.Variant)
-      _game.NewGame(index);
-    else _game.NewGame(_game.Items.ScriptList[index]);
+      _game.LoadGame(index);
+    else {
+      StatusbarText.text = "Loading...";
+      StartCoroutine(LoadScript(_game.Items.ScriptList[index]));
+    }
+  }
+
+  IEnumerator LoadScript(ScriptInfo script) {
+    yield return null;
+    StatusbarText.text = (_game.LoadGame(script)) ? "OK" : GameBoardModel.LastError;
+    yield return null;
   }
 }
 

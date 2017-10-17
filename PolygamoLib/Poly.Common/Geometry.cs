@@ -27,8 +27,11 @@ namespace Poly.Common {
     public static Rect Empty = new Rect();
 
     public bool IsEmpty { get { return this.Equals(Empty); } }
-    public int Width { get { return Right - Left; } }
-    public int Height { get { return Bottom - Top; } }
+    // Given coords of corners
+    public int Width { get { return Right - Left + 1; } }
+    public int Height { get { return Bottom - Top + 1; } }
+    //public int Width { get { return Right - Left; } }
+    //public int Height { get { return Bottom - Top; } }
 
     public override string ToString() {
       return String.Format("[{0},{1},{2},{3}]", Left, Top, Right, Bottom);

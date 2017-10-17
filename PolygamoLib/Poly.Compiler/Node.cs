@@ -19,12 +19,14 @@ using Poly.Common;
 
 namespace Poly.Compiler {
   abstract internal class NodeBase {
+    // The datatype of the underlying value, if any. Overridden by subclass
     virtual internal DataTypes DataType { get { return DataTypes.Void; } }
+    // Does the node contain a callable identifier? Overridden by subclass
     virtual internal bool IsFunc { get { return false; } }
+    // Does the node return a loadable value? Overridden by subclass
     virtual internal bool IsValue { get { return false; } }
-    //virtual internal string AsName { get { return ""; } }
-    //internal bool IsValue { get { return IsLiteral || IsIdent && AsIdent.Sym.IsValue; } }
 
+    internal bool IsConstant { get { return IsLiteral || IsIdent && AsIdent.Sym.IsValue; } }
     internal bool IsList { get { return this is ListNode; } }
     internal bool IsIdent { get { return this is IdentNode; } }
     internal bool IsLiteral { get { return this is LiteralNode; } }
@@ -93,7 +95,6 @@ namespace Poly.Compiler {
 
     internal override DataTypes DataType { get { return Value.DataType; } }
     internal override bool IsValue { get { return true; } }
-    //internal override string AsName { get { return Value.ToString(); } }
 
     public override string ToString() {
       return Value.Format();
@@ -154,6 +155,8 @@ namespace Poly.Compiler {
 
     // raw current node, may not match symbol table
     Node _current { get { return _nodes[_position]; } }
+    Node _listhead { get { return _current.AsList.First(); } }
+
     // static null parser
     static internal NodeListParser Null = new NodeListParser { _nodes = new List<Node>() };
 
@@ -164,21 +167,25 @@ namespace Poly.Compiler {
     internal bool IsList { get { return !Done && _current.IsList; } }
     internal bool IsIdent { get { return !Done && _current.IsIdent; } }
 
-    // updated current node, will match symbol table, must be guarded
+    // updated current node, will match symbol table, guard required
     internal Node Current { get { return CheckedIdent(_current); } }
-    internal Node PeekList { get { return CheckedIdent(_current.AsList.First()); } }
+    internal Node CheckedHead { get { return CheckedIdent(_listhead); } }
     internal IdentNode CurrentIdent { get { return Current as IdentNode; } }
 
-    internal bool IsValue { get { return !Done && (_current.IsLiteral || Current.IsValue); } }
-    internal bool IsBool { get { return IsValue && Current.IsBool; } }
-    internal bool IsString { get { return IsValue && Current.IsString; } }
-    internal bool IsNumber { get { return IsValue && Current.IsNumber; } }
+    internal bool IsValue { get { return !Done && Current.IsValue; } }
+    internal bool IsConstant { get { return !Done && Current.IsConstant; } }
+    internal bool IsBool { get { return IsConstant && Current.IsBool; } }
+    internal bool IsString { get { return IsConstant && Current.IsString; } }
+    internal bool IsNumber { get { return IsConstant && Current.IsNumber; } }
     internal bool IsAttribute { get { return IsIdent && Current.IsAttribute; } }
 
     internal bool IsVariable { get { return IsIdent && CurrentIdent.Sym.IsVariable; } }
     internal bool IsFunc { get { return IsIdent && Current.IsFunc; } }
-    internal bool IsSexpr { get { return IsList && PeekList.IsFunc; } }
+    internal bool IsValueFunc { get { return IsIdent && CurrentIdent.Sym.IsValueFunc; } }
+    internal bool IsSexpr { get { return IsList && CheckedHead.IsFunc; } }
+    internal bool IsValueSexpr { get { return IsList && _listhead.IsIdent && (CheckedHead as IdentNode).Sym.IsValueFunc; } }
     internal bool IsCallable { get { return IsFunc || IsSexpr; } }
+    internal bool IsValueCallable { get { return IsValueFunc || IsValueSexpr; } }
 
     // check ident, return new node if undef or base scope
     internal Node CheckedIdent(Node node) {
@@ -194,7 +201,8 @@ namespace Poly.Compiler {
 
     public override string ToString() {
       return String.Format("{0}^{1}", 
-        _nodes.Take(_position).Join(" ").ShortenLeft(40), _nodes.Skip(_position).Join(" ").Shorten(40)); //TODO: shorten
+        _nodes.Take(_position).Join(" ").ShortenLeft(40), _nodes.Skip(_position).Join(" ")).Shorten(80); //TODO: shorten
+        //_nodes.Take(_position).Join(" ").ShortenLeft(40), _nodes.Skip(_position).Join(" ").Shorten(40)); //TODO: shorten
     }
 
     // create from node that is either list or not
@@ -288,7 +296,7 @@ namespace Poly.Compiler {
 
     // get value which may be literal or ident with value
     internal TypedValue GetValue() {
-      Expect(IsValue, "Value");
+      Expect(IsConstant, "Value");
       return (IsIdent) ? GetIdent().AsValue : GetNode().AsValue;
     }
 

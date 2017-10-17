@@ -20,7 +20,7 @@ This release is an implementation of the Zillions Rules File format as a Unity g
 The project includes a games library, responsible for parsing the game description and providing the logic to play the game, 
 a player for Unity, and a few sample games.
 
-This is just the first release, to get some feedback and gauge interest. More will follow.
+See release notes for details about this release.
 
 # Licensing
 
@@ -38,6 +38,8 @@ For more details see http://www.polyomino.com/licence or the copy included with 
 
 Download the binary release, unzip it somewhere, run the program. 
 The release contains only a few sample games, just to give the general idea.
+Download the User Games and unzip it to the same place in a folder of that name.
+This contains a selection of user-created games known to work with Polygamo.
 
 ## The developer way 
 
@@ -58,7 +60,9 @@ The first time you do this, Unity will create a Library folder and perform some 
 The project will automatically build. Check there are no errors.
 
 1. Open the Title Scene and run the game in the Editor.
-Build a standalone player (if you wish), and run that.
+You may wish to review and change the editor-specific test settings in GameManager.cs.
+
+1. Build a standalone player (if you wish), and run that.
 Enjoy.
 
 1. Add your own games. Build a standalone player and give it to someone else to enjoy.
@@ -67,7 +71,7 @@ Enjoy.
 
 ## Compiler and Runtime
 
-The parser is two pass: first to expand macros and second to compile the game code into an internal format. 
+The parser is multi-pass: first to expand macros (two passes), then to define pieces, and then to compile the game code into an internal format. 
 There is no formal grammar, but rather it uses syntax-direct compilation based on reflection on a matching class system. 
 The language is unusual in that is is incrementally executed: at first to construct the Menu, 
 then an individual Game with pieces and players, then to create a new Board, then to generate Moves and test for Goals.
@@ -82,7 +86,7 @@ The language has been made 'Turing Complete', but the features that relies on wi
 At runtime there are Def objects with static information and Code objects that are executed to build Model objects that are dynamic.
 Runtime execution depends on reflection method binding. 
 The speed is less than ideal, particularly affecting the Move and Goal code and the construction of Board and Move models. 
-There are ways to improve this, but for now in the samples the 3D games are too slow to play.
+There are ways to improve this, but for now a few games will be found too slow to play.
 
 Runtime AI uses Monte Carlo Tree Search. https://en.wikipedia.org/wiki/Monte_Carlo_tree_search. 
 Most of the sample games play reasonably well, but not necessarily perfectly due to CPU time limitations.
@@ -101,28 +105,34 @@ However the test cases are specific to Visual Studio.
 ## Unity Player
 
 The Unity player is relatively small and simple, and accesses the game player only through the defined API.
-Many aspects of the design could be improved with no impact on the Polygamo library, or the player could 
+Many aspects of the visual design could be improved with no impact on the Polygamo library, or the player could 
 even be rewritten to target a different environment if desired.
 
 The language scripts specify the names of various images and sounds to be used in the game.
-In this Unity implementation:
+Sounds are not yet implemented.
 
-1. Each game script must be a text resource in an Assets/Resources/_game_ folder, 
+This Unity player supports both built-in games and user games.
+
+1. Each built-in game script must be a text resource in an Assets/Resources/_game_ folder, 
 where _game_ is the name both of the folder and the script it contains.
 Unity text resources have a TXT extension.
 If an image resource called Thumbnail is found in the folder it will be used to represent the script in the menu.
 
-1. For image names the extension is ignored, and the name is expected to identify an image resource found 
+For image names the extension is ignored, and the name is expected to identify an image resource found 
 in the _game_ folder or a subfolder: _game_/Images by convention.
 PNG and JPEG are natively supported, but BMP is not.
 
+1. User games should be placed in the User Games folder, in the same folder as the executable.
+At start-up Polygamo will search all subfolders looking for language script files with a ZRF or POLY extension.
+All images required by a script should be in folders relative to the script.
+BMP files are supported, as well as JPG and GIF.
+
 1. The board and pieces are scaled to fit the space. 
 Pixel sizes in the board definition are relative rather than absolute.
+This works for most games, but a few user games are not properly aligned.
 
 1. A game may contain variants, for which all resources share the same folder.
 There is no special treatment for using variants as menus.
-
-1. Sound has not been implemented yet, but will follow a similar strategy.
 
 The Unity scripts can be modified with either Visual Studio or Mono, at your choice.
 Unity supports a wide variety of platforms, but Polygamo has not been tested on them yet. 

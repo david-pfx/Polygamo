@@ -28,7 +28,7 @@ namespace Poly.Compiler {
     // these are ungrouped
     Number, HexNumber, Identifier, Operator, Punctuation, Binary, Time,
     // this group is in order for aggregation of tokens -- nothing after here
-    IdLit, CharDouble, CharSingle, CharHex, CharDec, CharNoQuote,
+    IdLit, CharDouble, CharSingle, CharHex, CharDec, CharNoQuote, 
   }
 
   /// <summary>
@@ -42,6 +42,7 @@ namespace Poly.Compiler {
     internal TokenTypes TokenType { get; set; }
     internal string SourcePath { get; set; }
     internal int LineNumber { get; set; }
+
     public override string ToString() {
       return String.Format("'{0}':{1}", Value, TokenType);
     }
@@ -109,9 +110,9 @@ namespace Poly.Compiler {
     //Catalog _catalog;
     //bool _stop = false;
     List<Token> _tokenlist = new List<Token>();
-    int _tokenindex = -1;  // must call GetNext() first
-    Token _lasttoken = new Token();
+    int _tokenindex = -1;  // must call Next() first
     Symbol _currentsymbol = Symbol.None;
+    string _basepath;
     Stack<string> _inputpaths = new Stack<string>();
 
     internal Token CurrentToken {  get { return _tokenlist[_tokenindex];  } }
@@ -129,16 +130,29 @@ namespace Poly.Compiler {
     // Load up the first source file
     internal void Start(TextReader input, string filename) {
       _symbols.Find("$filename$").Value = TextValue.Create(filename);
+      _basepath = Path.GetDirectoryName(filename);
       _inputpaths.Push(filename);
       PrepareTokens(input);
       Next();
     }
 
+    // Restart lexer with new token set after pre-processing
+    internal void Restart(List<Token> tokens) {
+      _tokenlist = tokens;
+      _tokenindex = -1;
+      AddToken(Token.EofName, TokenTypes.Punctuation, 0);
+      Next();
+    }
+
     // Insert a file into this one
-    internal bool Include(string input) {
-      if (!File.Exists(input)) return false;
+    internal bool Include(string filename) {
+      var input = filename;
+      if (!File.Exists(input)) {
+        input = Path.Combine(_basepath, filename);
+        if (!File.Exists(input)) return false;
+      }
       using (StreamReader sr = File.OpenText(input)) {
-        _symbols.Find("$filename$").Value = TextValue.Create(input);
+        _symbols.Find("$filename$").Value = TextValue.Create(filename);
         _inputpaths.Push(input);
         Include(sr);
         _inputpaths.Pop();
@@ -154,11 +168,23 @@ namespace Poly.Compiler {
       _tokenindex--;
       svtl.InsertRange(_tokenindex + 1, _tokenlist);
       _tokenlist = svtl;
-      MoveNext();
+      NextToken();
+    }
+
+    // Insert new tokens at the current position with macro substition
+    internal void InsertExpansion(List<Token> tokens) {
+      var newtokens = new List<Token>();
+      foreach (var token in tokens) {
+        if (_argregex.IsMatch(token.Value)) 
+          //if (token.TokenType == TokenTypes.MacroArg)
+          newtokens.AddRange(ReplaceArg(token));
+        else newtokens.Add(token);
+      }
+      Insert(newtokens);
     }
 
     // Insert new tokens at the current position
-    // Back up and step forward so everything gets processed right
+    // Back up and step forward so current token and symbol are correct
     internal void Insert(List<Token> body) {
       _tokenindex--;
       _tokenlist.InsertRange(_tokenindex + 1, body);
@@ -169,28 +195,35 @@ namespace Poly.Compiler {
     // Look N tokens ahead, using smarts in lexer
     internal Symbol LookAhead(int n) {
       var pos = LookNext(n);
-      //return (pos == _tokenindex) ? _currentsymbol 
       return (pos == 0) ? _currentsymbol // BUG: too many lookups!!!
         : _symbols.GetSymbol(_tokenlist[pos]);
     }
 
+    // get next token as symbol
     internal void Next() {
-      while(true) {
-        MoveNext();
-        _currentsymbol = _symbols.GetSymbol(_tokenlist[_tokenindex]);
-        //Logger.WriteLine(5, "{0}: Token=<{1}> Sym=<{2}>", _tokenindex, _tokenlist[_tokenindex], _currentsymbol);
-        if (_currentsymbol.Atom == Atoms.REPLACE)
-          _tokenlist.InsertRange(_tokenindex + 1, _currentsymbol.Body);
-        else break;
-      }
+      NextToken();
+      _currentsymbol = _symbols.GetSymbol(CurrentToken);
     }
 
-    //internal void Back() {
-    //  Logger.Assert(_tokenindex > 0);
-    //  Logger.WriteLine(4, "Token -- back");
-    //  _tokenindex--;
-    //  _currentsymbol = _symbols.GetSymbol(_tokenlist[_tokenindex]);
-    //}
+    // process a macro argument with token pasting
+    IList<Token> ReplaceArg(Token token) {
+      var tokvalue = token.Value;
+      var match = _argregex.Match(tokvalue);
+      var sym = _symbols.Find(match.Value);
+      if (sym == null || sym.Atom != Atoms.REPLACE) {
+        // could issue warning here?
+        //ErrLexer(token.LineNumber, "undefined macro argument '{0}'", token.Value);
+        return new List<Token>();
+      }
+      // token pasting, but only for single ident
+      if (match.Length == token.Value.Length || sym.Body.Count > 1)
+        return sym.Body;
+      var newtokvalue = tokvalue.Replace(match.Value, sym.Body[0].Value);
+      // could perform repeat substitution?
+      var newtoken = Token.Create(newtokvalue, token.TokenType, token.SourcePath, token.LineNumber);
+      //var newtoken = Token.Create(tokname, TokenTypes.Identifier, CurrentToken.SourcePath, CurrentToken.LineNumber);
+      return new List<Token> { newtoken };
+    }
 
     ///=================================================================
     /// Implementation
@@ -202,6 +235,9 @@ namespace Poly.Compiler {
     }
     List<RegexRow> _regextable = new List<RegexRow>();
     Regex _stringcont = new Regex(@"\G [\x00-\x20]* ( [^\x22\x00-\x1f]* \x22? )", RegexOptions.IgnorePatternWhitespace);
+    Regex _numregex = new Regex(@"^-?[.]?[0-9]+[0-9.]*$");
+    Regex _hexregex = new Regex(@"^0x[0-9]+[0-9a-fA-F]*$");
+    Regex _argregex = new Regex(@"\$[0-9]+");
     bool _strcont = false;
     string _strpart;
 
@@ -218,19 +254,23 @@ namespace Poly.Compiler {
       AddRegex(TokenTypes.CharDouble, @"\G\x22([^\x22\x00-\x1f]* \x22?)");  // printable chars in double quotes (0x22), CRLF allowed
       AddRegex(TokenTypes.Binary, @"\Gb'( [0-9a-f]* )'", RegexOptions.IgnoreCase);        // binary literal
       AddRegex(TokenTypes.Time, @"\Gt'( [a-z0-9/:. -]+ )'", RegexOptions.IgnoreCase);      // time literal
-      AddRegex(TokenTypes.Number, @"\G(-?[.]?[0-9]+[0-9.]*)");                // various kinds of number
-      AddRegex(TokenTypes.HexNumber, @"\G 0x ([0-9]+[0-9a-f]*)", RegexOptions.IgnoreCase);    // hex number
       AddRegex(TokenTypes.Punctuation, @"\G[()]");                       // one single char from known set
-      AddRegex(TokenTypes.Identifier, @"\G[^\x00-\x20\x22()']+", RegexOptions.IgnoreCase); // identifiers, any printable
+      AddRegex(TokenTypes.Identifier, @"\G[^\x00-\x20\x22()';]+", RegexOptions.IgnoreCase); // identifiers, any printable
+      // never matched -- identifer goes first
+      //AddRegex(TokenTypes.Number, @"\G(-?[.]?[0-9]+[0-9.]*)");                // various kinds of number
+      //AddRegex(TokenTypes.HexNumber, @"\G 0x ([0-9]+[0-9a-f]*)", RegexOptions.IgnoreCase);    // hex number
     }
 
     // Tokenise the input and keep until asked
     void PrepareTokens(TextReader reader, bool include = false) {
+      //_numregex = new Regex(@"^-?[.]?[0-9]+[0-9.]*$");
+      //_hexregex = new Regex(@"^0x[0-9]+[0-9a-fA-F]*$");
+      //_argregex = new Regex(@"\$[0-9]+");
+
       var lineno = 0;
       for (var line = reader.ReadLine(); line != null; line = reader.ReadLine()) {
         lineno++;
         AddToken(line, TokenTypes.LINE, lineno);
-        //AddToken(line, TokenTypes.LINE, lineno);
         Match m = Match.Empty;
         for (var col = 0; col < line.Length; col += m.Length) {
           var tt = TokenTypes.Nul;
@@ -274,38 +314,38 @@ namespace Poly.Compiler {
         if (name.Length > 0 && name.Last() == '\x22')
           name = name.Substring(0, name.Length - 1);
         else type = TokenTypes.CharNoQuote;
+        // handle continuation string: tag for crlf expansion later
+        // control characters should trigger lex error if used in include
         if (_strcont) {
           var n = name.Trim();
-          name = _strpart + (n.Length == 0 ? "\\" : " " + n);
+          name = _strpart + "\r" + n;
+          //name = _strpart + (n.Length == 0 ? "\\" : "" + n);
         }
         _strcont = (type == TokenTypes.CharNoQuote);
+      } else if (type == TokenTypes.Identifier) {
+        if (_numregex.IsMatch(name)) type = TokenTypes.Number;
+        if (_hexregex.IsMatch(name)) type = TokenTypes.HexNumber;
+        //if (_argregex.IsMatch(name)) type = TokenTypes.MacroArg;
       }
 
       if (type == TokenTypes.CharNoQuote) {
         _strpart = name;
       } else {
-        // translate string backslash to CRLF and grave to double-quote
-        // defer -- does not apply to include
-        //if (type == TokenTypes.CharDouble) {
-        //  name = name.Replace('\\', '\n').Replace('`', '"');
-        //}
         var token = Token.Create(name, type, _inputpaths.Peek(), lineno);
         _tokenlist.Add(token);
-        _lasttoken = token;
       }
 
     }
 
     // Step to next token, taking action as we go
-    void MoveNext() {
-      //if (_stop) _tokenindex = _tokenlist.Count - 1;
+    internal void NextToken() {
       while (_tokenindex < _tokenlist.Count - 1) {
         ++_tokenindex;
         var token = _tokenlist[_tokenindex];
         if (token.TokenType == TokenTypes.LINE) {
           _symbols.Find("$lineno$").Value = NumberValue.Create(token.LineNumber);
-          if (Logger.Level > 0)
-            Logger.WriteLine("{0,3}: {1}", token.LineNumber, token.Value);
+          if (Logger.Level > 1 || (Logger.Level == 1 && token.SourcePath == _tokenlist[0].SourcePath))
+              Logger.WriteLine("{0,3}: {1}", token.LineNumber, token.Value);
         } else if (token.TokenType == TokenTypes.Directive) {
           Directive(token);
         } else if (token.TokenType == TokenTypes.Bad) {
@@ -326,7 +366,6 @@ namespace Poly.Compiler {
       }
       return pos < _tokenlist.Count ? pos : _tokenlist.Count - 1;
     }
-
 
     // Process line as directive, return true if so
     private bool Directive(Token token) {
@@ -360,13 +399,5 @@ namespace Poly.Compiler {
       Logger.WriteLine("Error line {0}: {1}", lineno, String.Format(message, args));
       return true;
     }
-
-    string Unquote(string s) {
-      if (Regex.IsMatch(s, "^'.*'$") || Regex.IsMatch(s, "^\".*\"$"))
-        return s.Substring(1, s.Length - 2);
-      else return s;
-    }
-
   }
-
 }

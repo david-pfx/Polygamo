@@ -36,7 +36,7 @@ namespace Poly.Engine {
   /// <summary>
   /// Manage a tree of choices corresponding to boards and moves made
   /// </summary>
-  internal class ChoiceManager {
+  internal class ChoiceMaker {
 
     // translate player result into corresponding weight
     static Dictionary<ResultKinds, double> _weightlookup = new Dictionary<ResultKinds, double> {
@@ -46,16 +46,21 @@ namespace Poly.Engine {
       { ResultKinds.Win, MoveWeight.ResultWin },
     };
 
-    static Dictionary<ChooserKinds, Action<Choice, int>> methodlookup = new Dictionary<ChooserKinds, Action<Choice, int>> {
-      {ChooserKinds.None, (c,i) => new List<MoveWeight>() },
-      {ChooserKinds.First, (c,i) => c.ChooseFirst() },
-      {ChooserKinds.Mcts, (c,i) => c.ChooseMcts(i) },
-      {ChooserKinds.Breadth, (c,i) => c.ChooseBreadth(i) },
-      {ChooserKinds.Depth, (c,i) => c.ChooseByDepth(i) },
-      {ChooserKinds.Full, (c,i) => c.ChooseByDepth(99) },
+    static Dictionary<ChooserKinds, Action<Choice,int,int>> _methodlookup = new Dictionary<ChooserKinds, Action<Choice,int,int>> {
+      {ChooserKinds.None, (c,a1,a2) => new List<MoveWeight>() },
+      {ChooserKinds.First, (c,a1,a2) => c.ChooseFirst() },
+      {ChooserKinds.Mcts, (c,a1,a2) => c.ChooseMcts(a1, a2) },
+      {ChooserKinds.Breadth, (c,a1,a2) => c.ChooseBreadth(a1) },
+      {ChooserKinds.Depth, (c,a1,a2) => c.ChooseByDepth(a1) },
+      {ChooserKinds.Full, (c,a1,a2) => c.ChooseByDepth(99) },
     };
 
     //-- props
+    // steps per update
+    internal int StepCount { get; set; }
+    // max depth (implemented for MCTS)
+    internal int MaxDepth { get; set; }
+
     // chosen best move as index into legal moves
     internal int Index { get { return _choice.BestIndex; } }
     // value attached to this move
@@ -74,22 +79,28 @@ namespace Poly.Engine {
     ChooserKinds _kind;
 
     //-- factories
-    internal static ChoiceManager Create(BoardModel board, ChooserKinds kind) {
-      return new ChoiceManager {
+    internal static ChoiceMaker Create(BoardModel board, ChooserKinds kind, int steps, int depth) {
+      return new ChoiceMaker {
         _choice = Choice.Create(board),
         _kind = kind,
+        StepCount = steps,
+        MaxDepth = depth,
       };
     }
 
     // return chooser for move using existing choices
-    internal ChoiceManager MakeMove(int index) {
+    internal ChoiceMaker MakeMove(int index) {
+      if (_choice == null) return null;
+      if (index < 0 || index >= _choice.Children.Count) return null;
       if (_choice.Children[index] == null)
         _choice.Extend(index);
       var choice = _choice.Children[index];
       //if (choice.Children.Count > 0) choice.PickBest();
-      return new ChoiceManager {
+      return new ChoiceMaker {
         _choice = _choice.Children[index],
         _kind = _kind,
+        StepCount = StepCount,
+        MaxDepth = MaxDepth,
       };
     }
 
@@ -100,9 +111,9 @@ namespace Poly.Engine {
     }
 
     // update the choice tree using arg if not yet done
-    internal void Update(int arg) {
+    internal void Update() {
       if (_choice.IsDone) return;
-      methodlookup[_kind](_choice, arg);
+      _methodlookup[_kind](_choice, StepCount, MaxDepth);
     }
   }
 
@@ -253,10 +264,10 @@ namespace Poly.Engine {
     // Monte Carlo tree search, one step at a time
     // Reimplemented according to http://www.cameronius.com/cv/mcts-survey-master.pdf
     // sets Done at top level when complete (not impl)
-    internal void ChooseMcts(int steps) {
-      Logger.WriteLine(3, ">Mcts steps={0} this:{1}", steps, this);
+    internal void ChooseMcts(int steps, int maxdepth) {
+      Logger.WriteLine(3, ">Mcts steps={0} depth={1} this:{2}", steps, maxdepth, this);
       for (_stepper = 0; _stepper < steps && !IsDone; ++_stepper)
-        ApplyMcts();
+        ApplyMcts(maxdepth);
       BestIndex = SelectMaxUct(0);
       if (Logging(3)) {
         for (int i = 0; i < Children.Count; ++i)
@@ -268,14 +279,14 @@ namespace Poly.Engine {
     // on each step: first extend children (one per step), play out, back propagate
     // then select child by UCT, play out, back propagate
     // mark and prune completed sub-trees until (maybe) all done
-    internal void ApplyMcts() {
-      if (Logging(4)) Logger.WriteLine("ApplyMcts st={0} this={1}", _stepper, this);
+    internal void ApplyMcts(int maxdepth) {
+      if (Logging(4)) Logger.WriteLine("ApplyMcts max={0} this={1}", maxdepth, this);
       var stack = new Stack<Choice>();
       var node = this;
       const double explconst = 1.414;
 
       // ref: apply tree policy
-      while (!node.IsDone) {
+      while (stack.Count < maxdepth && !node.IsDone) {
         stack.Push(node);
         var index = node.SelectExtend();
         if (index != -1) {
@@ -290,7 +301,7 @@ namespace Poly.Engine {
       }
 
       // ref: apply default policy
-      while (!node.IsDone) {
+      while (stack.Count < maxdepth && !node.IsDone) {
         stack.Push(node);
         var index = Board.NextRandom(node.Children.Count);
         node.BestIndex = index;
@@ -324,19 +335,29 @@ namespace Poly.Engine {
       var index = -1;
       var tlnvc = 2 * Math.Log(VisitCount);
       var uct = -9999.0;
+      var firstuct = 0.0;
       for (int i = 0; i < Children.Count; i++) {
         var child = Children[i];
-        if (child == null && explparam == 0) continue; // null children allowed in final call
+        if (child == null && explparam <= 0) continue; // null children allowed in final call
+        //if (child == null && explparam == 0) continue; // null children allowed in final call
         if (child == null) throw Error.Assert("null child {0}", i);
         //if (child.IsDone) continue; // may need special?
         var thisuct = (double)child.WinCount / (double)child.VisitCount
           + explparam * Math.Sqrt(tlnvc / child.VisitCount);
+        if (i == 0) firstuct = thisuct;
         if (thisuct > uct) {
           uct = thisuct;
           index = i;
         }
       }
-      if (Logging(4)) Logger.WriteLine("-maxuct {0}:{1}:{2}", explparam, index, Board.LegalMoves[index]);
+      if (explparam == 0 && uct == firstuct) { // all the same, not advantage found, go for random
+        var indexes = Enumerable.Range(0, Children.Count)
+          .Where(x => Children[x] != null && !Board.LegalMoves[x].IsPass)
+          .ToArray();
+        index = (indexes.Length == 0) ? 0 : indexes[Board.NextRandom(indexes.Length)];
+      }
+      if (Logging(4)) Logger.WriteLine("-maxuct ex={0} ix={1} fu={2} mv{3}", 
+        explparam, index, firstuct == uct, Board.LegalMoves[index]);
       return index;
     }
 

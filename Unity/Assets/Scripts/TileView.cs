@@ -44,13 +44,14 @@ public class TileView : MonoBehaviour {
   TileModel _tilemodel;
 
   GameManager _game { get { return GameManager.Instance; } }
-  BoardModel _model { get { return _game.Model; } }
+  GameBoardModel _model { get { return _game.Model; } }
 
   Image _tileimage;       // background
   Image _borderimage;     // border
   TileStateMachine _tsm;
   Vector3 _lastcursor;
   MoveModel _previewmove;
+  UiManager _uimx;
 
   ///============================================================================
   /// Handlers
@@ -66,6 +67,7 @@ public class TileView : MonoBehaviour {
   void Start() {
     _tileimage = GetComponent<Image>();
     _borderimage = BorderObject.GetComponent<Image>();
+    _uimx = FindObjectOfType<UiManager>();
     _tsm = new TileStateMachine(this);
     OnClear();
     LoadPieceImage(PieceObject, _tilemodel.PlayerName, _tilemodel.PieceName);
@@ -82,12 +84,12 @@ public class TileView : MonoBehaviour {
   }
 
   void OnMouseEnter() {
-    if (!_game.IsPlaying) return;
+    if (!AllowInput()) return;
     _tsm.HandleInput(TileInput.Over);
   }
 
   void OnMouseOver() {
-    if (!_game.IsPlaying) return;
+    if (!AllowInput()) return;
     var world = Camera.main.ScreenToWorldPoint(Input.mousePosition);
     var cursor = transform.InverseTransformPoint(world);
     var input = Input.GetMouseButton(0) ? TileInput.Left : TileInput.Over;
@@ -99,7 +101,7 @@ public class TileView : MonoBehaviour {
   }
 
   void OnMouseExit() {
-    if (!_game.IsPlaying) return;
+    if (!AllowInput()) return;
     _tsm.HandleInput(TileInput.Exit);
   }
 
@@ -108,38 +110,21 @@ public class TileView : MonoBehaviour {
 
   // Call this to make the visible sprite match the model
   void LoadPieceImage(GameObject obj, string player, string piece) {
-    if (piece == null) _game.Items.LoadImage(obj, null, "");
+    if (piece == null) _game.Items.LoadImage(null, "", obj);
     else {
       var images = _model.GetImageNames(player, piece);
-      var loaded = images != null && images.Any(i => _game.Items.LoadImage(obj, _model.ScriptName, i));
+      var loaded = images != null && images.Any(i => _game.Items.LoadImage(_model.Script, i, obj));
       if (images != null && !loaded)
         Util.Trace(2, "show {0} {1}", player, piece, images.Join());
-      if (!loaded) _game.Items.LoadImage(obj, null, "piece:red");
+      if (!loaded) _game.Items.LoadImage(null, "piece:red", obj);
     }
   }
 
-  // Coroutine to consult AI for best move
-  IEnumerator ChooseMove() {
-    yield return null;
-    if (!_model.IsGameOver) {
-      _model.IsThinking = true;
-      var t1 = Time.realtimeSinceStartup;
-      var t2 = Time.realtimeSinceStartup;
-      var n = 0;
-      var done = false;
-      for (n = 1; !done && t2 - t1 < _game.ThinkTime && _model.IsThinking; ++n) {
-        yield return null;
-        done = _model.UpdateChooser(_game.StepCount);
-        t2 = Time.realtimeSinceStartup;
-      }
-      //Util.Trace(3,"Time={0} count={1} count={2} weight={3:G5} move={4}", t2 - t1, n, _model.VisitCount, _model.Weight, _model.ChosenMove);
-      _model.MakeMove(_model.ChosenMove);
-      _model.IsThinking = false;
-    }
-    _tsm.HandleInput(TileInput.Thought);
-    yield return null;
+  bool AllowInput() {
+    return _game.IsPlaying && _model.IsMyTurn;
   }
 
+  //============================================================================
   //----- state change handlers
 
   internal bool OnClear() {
@@ -148,6 +133,7 @@ public class TileView : MonoBehaviour {
     LoadPieceImage(PreviewObject, null, null);
     if (_previewmove.IsDual)
       _tilemodel.Board.SetPreview(null, _previewmove.NewPosition, null);
+    _uimx.StatusText.text = "";
     return true;
   }
 
@@ -155,13 +141,17 @@ public class TileView : MonoBehaviour {
     if (_model.IsThinking) return false;
     _borderimage.color = BorderHighlight;
     var moves = _tilemodel.GetMoves().OrderBy(m => m.NewPosition).ToList();
-    if (moves.Count > 0) {
+    if (moves.Count == 0) {
+      _uimx.StatusText.text = (_tilemodel.PieceName == null) ? String.Format("{0}", _tilemodel.Name)
+        : String.Format("{0} {1} on {2}", _tilemodel.PlayerName, _tilemodel.PieceName, _tilemodel.Name);
+    } else { 
       // in case we want to make this move
       _previewmove = moves[PickMove(moves.Count)];
       LoadPieceImage(PreviewObject, _previewmove.Player, _previewmove.Piece);
       if (_previewmove.IsDual)
         _tilemodel.Board.SetPreview(_previewmove.Player, _previewmove.NewPosition, _previewmove.NewPiece);
       _tileimage.color = TileHighlight;
+      _uimx.StatusText.text = _previewmove.Display;
       return true;
     }
     _tileimage.color = TileNormal;
@@ -179,12 +169,6 @@ public class TileView : MonoBehaviour {
   internal bool OnExecute() {
     Util.Trace(2, "exec {0}", _previewmove);
     _tilemodel.Board.MakeMove(_previewmove.Index);
-    StartCoroutine(ChooseMove());
-    return true;
-  }
-
-  internal bool OnThought() { // CHECK: do we still need this?
-    OnClear();
     return true;
   }
 }
@@ -215,9 +199,7 @@ class TileStateMachine {
       new TileTransition(TileState.Normal, TileInput.Over, t => t.OnCheck(), TileState.Highlighted),
       new TileTransition(TileState.Highlighted, TileInput.Exit, t => t.OnClear(), TileState.Normal),
       new TileTransition(TileState.Highlighted, TileInput.Over, t => t.OnClear() && t.OnCheck(), TileState.Highlighted),
-      new TileTransition(TileState.Highlighted, TileInput.Left, t => t.OnClear() && t.OnExecute(), TileState.Thinking),
-      new TileTransition(TileState.Thinking, TileInput.Left, t => t.OnThought(), TileState.Normal),
-      new TileTransition(TileState.Thinking, TileInput.Thought, t => t.OnThought(), TileState.Normal),
+      new TileTransition(TileState.Highlighted, TileInput.Left, t => t.OnClear() && t.OnExecute(), TileState.Normal),
     };
   TileView _tileview;
 

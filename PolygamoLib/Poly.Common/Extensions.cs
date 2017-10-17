@@ -51,6 +51,12 @@ namespace Poly.Common {
       return tmp.ToString();
     }
 
+    // return nth split on ';' as an array of strings split on ','
+    public static string[] SplitXY(this string target, int index = 0) {
+      var parts = target.Split(';');
+      return (index < parts.Length) ? parts[index].Split(',') : null;
+    }
+
     // safe parsing routines, return null on error
     public static bool? SafeBoolParse(this string s) {
       bool value;

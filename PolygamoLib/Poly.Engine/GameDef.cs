@@ -108,7 +108,7 @@ namespace Poly.Engine {
     internal readonly Dictionary<PlayerValue, PlayerDef> PlayerLookup = new Dictionary<PlayerValue, PlayerDef>();
     internal readonly Dictionary<PieceValue, PieceDef> PieceLookup = new Dictionary<PieceValue, PieceDef>();
     internal readonly List<GoalDef> Goals = new List<GoalDef>();
-    internal List<TurnDef> TurnOrders;
+    internal List<TurnDef> TurnOrders; // TODO: check not null
     internal List<SetupDef> SetupItems = new List<SetupDef>();
     // move priorities from high to low
     internal List<MoveTypeValue> MovePriorities = new List<MoveTypeValue>();
@@ -208,18 +208,6 @@ namespace Poly.Engine {
       SetupItems.Add(SetupDef.Create(player, piece, offqty, positions));
     }
 
-    internal void AddTurnOrder(PlayerValue player, PlayerValue playeras, MoveTypeValue movetype) {
-      TurnOrders.Add(new TurnDef {
-        TurnPlayer = player,
-        MovePlayer = playeras,
-        MoveType = movetype,
-      });
-    }
-
-    internal void AddSymmetry(PlayerValue player, DirectionValue directionValue1, DirectionValue directionValue2) {
-      throw new NotImplementedException();
-    }
-
     internal void AddPlayers(IList<PlayerValue> players) {
       foreach (var player in players)
         PlayerLookup[player] = new PlayerDef { Player = player };
@@ -246,6 +234,8 @@ namespace Poly.Engine {
     internal bool IsActive;
 
     internal bool IsNeutral { get { return !IsActive; } }
+    internal bool IsRandom { get { return Player.Value.StartsWith("?"); } }
+
     public override string ToString() {
       return String.Format("{0}:{1}", Player.Value, IsActive ? "active" : "neutral");
     }
@@ -328,9 +318,13 @@ namespace Poly.Engine {
     // known positions for this board
     internal readonly Dictionary<PositionValue, PositionDef> PositionLookup = new Dictionary<PositionValue, PositionDef>();
     // known zones for this board
-    internal readonly Dictionary<Pair<ZoneValue, PlayerValue>, HashSet<PositionValue>> ZoneLookup = new Dictionary<Pair<ZoneValue, PlayerValue>, HashSet<PositionValue>>();
+    internal readonly Dictionary<Pair<ZoneValue, PlayerValue>, HashSet<PositionValue>> ZoneLookup = 
+      new Dictionary<Pair<ZoneValue, PlayerValue>, HashSet<PositionValue>>();
     // known links for this board
     internal readonly Dictionary<PositionValue, List<LinkDef>> LinkLookup = new Dictionary<PositionValue, List<LinkDef>>();
+    // known symmetries for this board
+    internal readonly Dictionary<Pair<PlayerValue,DirectionValue>, DirectionValue> SymmetryLookup =
+      new Dictionary<Pair<PlayerValue, DirectionValue>, DirectionValue>();
 
     internal int Dimensions = 0;
 
@@ -358,14 +352,16 @@ namespace Poly.Engine {
     }
 
     // get position from position and direction
-    internal PositionValue GetPosition(PositionValue position, DirectionValue direction) {
+    internal PositionValue GetPosition(PositionValue position, PlayerValue player, DirectionValue direction) {
       if (!LinkLookup.ContainsKey(position)) return null;
-      var link = LinkLookup[position].FirstOrDefault(k => k.Direction == direction);
+      var newdir = SymmetryLookup.SafeLookup(Pair.Create(player, direction)) ?? direction;
+      var link = LinkLookup[position].FirstOrDefault(k => k.Direction == newdir);
       return (link == null) ? null : link.To;
     }
 
-    // find first link of give direction that points to here, or null
+    // get position following direction in reverse
     internal PositionValue GetOpposite(PositionValue position, DirectionValue direction) {
+      // for every key for every value match to and direction, return position
       return LinkLookup.Keys.FirstOrDefault(p => LinkLookup[p]
         .Any(lk => lk.To == position && lk.Direction == direction));
     }
@@ -375,10 +371,15 @@ namespace Poly.Engine {
       return ZoneLookup[Pair.Create(zone, player)];
     }
 
-    //--- impl board creation
-    bool IsPosition(PositionValue name) {
-      return PositionLookup.ContainsKey(name);
+    // iterate all adjacent positions for player
+    internal IEnumerable<PositionValue> AdjacentIter(PositionValue position, PlayerValue player) {
+      var links = LinkLookup.SafeLookup(position); // might be no links on this position
+      if (links != null)
+        foreach (var link in links)
+          yield return link.To;
     }
+
+    //--- impl board creation
 
     internal PositionValue GetPosition(string name) {
       var position = PositionValue.Create(name);
@@ -387,7 +388,7 @@ namespace Poly.Engine {
     }
 
     void SetPosition(PositionValue position) {
-      if (!IsPosition(position)) PositionLookup[position] = new PositionDef {
+        if (!PositionLookup.ContainsKey(position)) PositionLookup[position] = new PositionDef {
         Position = position
       };
     }
@@ -413,8 +414,9 @@ namespace Poly.Engine {
       var links = LinkLookup.GetMulti(frompos);
       if (links != null) {
         // remove back link
-        foreach (var link in links)
-          RemoveLink(link.To, link.From);
+        foreach (var link in links.ToArray()) // copy collection to insulate from removals
+        //foreach (var link in links) -- cannot repro error
+            RemoveLink(link.To, link.From);
         // remove key
         LinkLookup.Remove(frompos);
       }
@@ -444,6 +446,10 @@ namespace Poly.Engine {
         ZoneLookup[Pair.Create(zone.Name, player)] = zone.Positions;
     }
 
+    //-- symmetries
+    internal void AddSymmetry(PlayerValue player, DirectionValue directionValue1, DirectionValue directionValue2) {
+      SymmetryLookup[Pair.Create(player, directionValue1)] = directionValue2;
+    }
   }
 
   ///---------------------------------------------------------------------------

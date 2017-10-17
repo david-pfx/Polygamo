@@ -49,7 +49,7 @@
     <Compile Include="Poly.Compiler\Scope.cs" />
     <Compile Include="Poly.Compiler\SymbolTable.cs" />
     <Compile Include="Poly.Engine\Builtin.cs" />
-    <Compile Include="Poly.Engine\Chooser.cs" />
+    <Compile Include="Poly.Engine\ChoiceMaker.cs" />
     <Compile Include="Poly.Engine\HashMaker.cs" />
     <Compile Include="Poly.Engine\GameCode.cs" />
     <Compile Include="Poly.Engine\Evaluator.cs" />

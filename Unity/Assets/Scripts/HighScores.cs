@@ -24,7 +24,7 @@ public class HighScores : MonoBehaviour {
   internal int TotalTime { get; set; }
 
   GameManager _game { get { return GameManager.Instance; } }
-  BoardModel _model { get { return _game.Model; } }
+  GameBoardModel _model { get { return _game.Model; } }
 
   internal void UpdateScore() {
     LoadScore();

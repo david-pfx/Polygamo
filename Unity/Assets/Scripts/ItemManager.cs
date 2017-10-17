@@ -16,52 +16,103 @@ using System.Linq;
 using System.IO;
 using UnityEngine;
 using UnityEngine.UI;
+using B83.Image.BMP;
 using PolygamoUnity;
 
+internal class ScriptInfo {
+  internal string Folder { get; private set; }   // folder for finding other things
+  internal string Filename { get; private set; }     // name of script (including extension)
+  internal bool IsAsset { get; private set; }    // true if Unity asset (no extension)
+
+  public override string ToString() {
+    return String.Format("{0}:{1}:{2}", Folder, Filename, IsAsset);
+  }
+
+  internal static ScriptInfo Create(string folder, string script, bool isasset) {
+    return new ScriptInfo { Folder = folder, Filename = script, IsAsset = isasset };
+  }
+}
+
 public class ItemManager : MonoBehaviour {
+  const string GamesFolder = "Games";
+  const string CommonFolder = "Common";
 
   //-- public settables
+  public string UserGamesFolder = "User Games";
   public Sprite EmptySprite;
   public Color EmptyColor;
 
-  internal List<string> ScriptList = new List<string>();
-  internal int CurrentGame { get; private set; }
+  internal List<ScriptInfo> ScriptList = new List<ScriptInfo>();
+  internal string RootFolderReadme;
 
-  // Make a list of every text asset under Games that is in a folder of the same name
-  internal void FindAllGames() {
-    var scripts = Resources.LoadAll<TextAsset>("Games");
-    Util.Trace(2, "Load games {0}", scripts.Select(s=>s.name).Join());
-    for (int i = 0; i < scripts.Length; i++) {
-      var name = scripts[i].name;
-      var path = Util.Combine("Games", name, name);
-      var script = Resources.Load<TextAsset>(path);
-      if (script != null) ScriptList.Add(name);
-      Util.Trace(3, "Game {0} {1} {2}", name, path, script);
-      Resources.UnloadAsset(scripts[i]);
-      Resources.UnloadAsset(script);
+  readonly string[] GameNamePatterns = new string[] { "*.poly", "*.zrf" };
+  string UserGamesPath;
+
+  internal string LoadReadme(string name) {
+    var game = ScriptList.Find(g => g.Filename == name);
+    if (game == null) return "game not found!";
+    if (game.IsAsset) {
+      var resource = Resources.Load<TextAsset>(Path.Combine(game.Folder, "readme"));
+      return resource == null ? "no readme" : resource.text;
     }
+    return Util.LoadText(game.Folder, "readme.txt");
   }
 
-  // load a script by name from folder (usually same name)
-  internal string LoadScript(string folder, string script) {
-    Util.Trace(2, "Load script folder={0} script={1}", folder, script);
-    if (!ScriptList.Contains(folder)) return null;
-    var path = Path.ChangeExtension(Util.Combine("Games", folder, script), null);
-    var rc = Resources.Load<TextAsset>(path);
-    return rc == null ? null : rc.text;
+  // Find all games and add to script list
+  internal void FindAllGames() {
+    UserGamesPath = Util.Combine(Path.GetDirectoryName(Application.dataPath), UserGamesFolder);
+    // find all games included as text resources
+    var texts = Resources.LoadAll<TextAsset>(GamesFolder);
+    for (int i = 0; i < texts.Length; i++) {
+      AddGame(texts[i].name);
+      Resources.UnloadAsset(texts[i]);
+    }
+    RootFolderReadme = Util.LoadText(UserGamesPath, "readme.txt");
+    AddGamesRaw(UserGamesPath);
+    Util.Trace(2, "[Find games {0}]", ScriptList.Select(s => s.Filename).Join());
+  }
+
+  // Load by name provided text asset in folder of same name (need that to find images etc)
+  internal void AddGame(string name) {
+    var folder = Path.Combine(GamesFolder, name);
+    var script = Resources.Load<TextAsset>(Path.Combine(folder, name));
+    if (script != null) ScriptList.Add(ScriptInfo.Create(folder, name, true));
+    Resources.UnloadAsset(script);
+  }
+
+  // Load games found in a folder: folder with script of same name
+  private void AddGamesRaw(string folder) {
+    try {
+      foreach (var gamefolder in Directory.GetDirectories(folder)) {
+        foreach (var pattern in GameNamePatterns) {
+          var scripts = Directory.GetFiles(gamefolder, pattern);
+          foreach (var script in scripts)
+            ScriptList.Add(ScriptInfo.Create(gamefolder, Path.GetFileName(script), false));
+        }
+      }
+    } catch (Exception) { }
+  }
+
+  // load a script by name
+  internal string LoadScript(ScriptInfo script) {
+    Util.Trace(2, "Load script {0}", script.Filename);
+    if (script.IsAsset) {
+      var rc = Resources.Load<TextAsset>(Util.Combine(script.Folder, script.Filename));
+      return (rc == null) ? null : rc.text;
+    } else
+      return Util.LoadText(script.Folder, script.Filename);
   }
 
   // load image, colour and rotation into object by decoding sprite name
-  internal bool LoadImage(GameObject obj, string game, string loadinfo) {
-    //Util.Trace(2, "Load image {0} {1}", game, loadinfo);
+  internal bool LoadImage(ScriptInfo script, string loadinfo, GameObject obj) {
+    Util.Trace(3, "Load image script={0} {1}", script, loadinfo);
     var image = obj.GetComponent<Image>();
-    if (loadinfo == "") {
+    if (script == null) {
       image.sprite = EmptySprite;
       image.color = EmptyColor;
     } else {
       var split = (loadinfo + "::").Split(':');
-      var sprite = LoadSprite(game, split[0]);
-      if (sprite == null) sprite = LoadSprite(null, split[0]);
+      var sprite = LoadSprite(script, split[0]) ?? LoadSprite(CommonFolder, split[0]);
       if (sprite == null) return false;
       image.preserveAspect = true;
       image.sprite = sprite;
@@ -71,18 +122,40 @@ public class ItemManager : MonoBehaviour {
     return true;
   }
 
-  // load sprite from assets by game and image name
-  private Sprite LoadSprite(string game, string name) {
-    var path = (game == null) ? Path.ChangeExtension(Util.Combine("Common", name), null)
-      : Path.ChangeExtension(Util.Combine("Games", game, name), null);
+  // load sprite from assets or from game folder or from user games
+  Sprite LoadSprite(ScriptInfo script, string filename) {
+    if (script.IsAsset)
+      return LoadSprite(script.Folder, Path.ChangeExtension(filename, null));
+    return LoadSpriteRaw(script.Folder, filename) ?? LoadSpriteRaw(UserGamesPath, filename);
+  }
+
+  // load sprite from resource
+  Sprite LoadSprite(string folder, string filename) {
+    var path = Path.Combine(folder, filename);
     return Resources.Load<Sprite>(path);
   }
 
   // load sprite by name from raw file
-  private Sprite LoadSpriteRaw(string name) {
+  Sprite LoadSpriteRaw(string folder, string filename) {
+    if (Path.GetExtension(filename).ToLower() == ".bmp") return LoadSpriteBmp(folder, filename);
     var tex = new Texture2D(2, 2); // size not used
-    var bits = Util.LoadBinary("Games", name);
+    var bits = Util.LoadBinary(folder, filename);
     tex.LoadImage(bits);
+    return Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), Vector2.zero);
+  }
+
+  Sprite LoadSpriteBmp(string folder, string filename) {
+    var bits = Util.LoadBinary(folder, filename);
+    if (bits == null) return null;
+    var bmpload = new BMPLoader();
+    if (bmpload == null) return null;
+    var bmp = bmpload.LoadBMP(bits);
+    if (bmp == null) return null;
+    var transparency = Color.green;    // pure green is transparent
+    for (int i = 0; i < bmp.imageData.Length; ++i)
+      if (bmp.imageData[i] == transparency)
+        bmp.imageData[i] = Color.clear;
+    var tex = bmp.ToTexture2D();
     return Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), Vector2.zero);
   }
 

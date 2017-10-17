@@ -28,5 +28,11 @@ namespace Poly.Engine {
     protected BoolValue s_Not(BoolValue arg) {
       return BoolValue.Create(!arg.Value);
     }
+
+    protected PositionOrDirection s__PosOrDir(TypedValue value) {
+      if (!(value.DataType == DataTypes.Position || value.DataType == DataTypes.Direction))
+        Error.Assert("not position or direction");
+      return new PositionOrDirection { Value = value };
+    }
   }
 }

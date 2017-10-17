@@ -38,8 +38,7 @@ namespace Poly.Compiler {
 
     }
 
-    // Begin parse, return iterator over nodes.
-    // Enumerating iterator expands define and include (and triggers include error)
+    // Run lexer, then pre-processor, return iterator over nodes for parsing
     internal IEnumerable<Node> ParseNodes(TextReader input, TextWriter output, string filename) {
       Logger.WriteLine(3, "Parse program {0}", filename);
       _lexer = Lexer.Create(Symbols);
@@ -47,6 +46,7 @@ namespace Poly.Compiler {
 
       // only when everything is ready -- process initial directives to set flags
       _lexer.Start(input, filename);
+      _lexer.Restart(ParsePreproc());
       while (!Check(Atoms.EOF)) {
         Node node;
         try {
@@ -61,35 +61,26 @@ namespace Poly.Compiler {
       }
     }
 
-    // Parse entire program, return list of nodes
-    internal List<Node> ParseAllNodes(TextReader input, TextWriter output, string filename) {
-      Logger.WriteLine(4, "Parse program {0}", filename);
-      _lexer = Lexer.Create(Symbols);
-      _output = output;
-
-      // only when everything is ready -- process initial directives to set flags
-      _lexer.Start(input, filename);
-      var program = ParseAll();
-      return program;
-    }
-
-    // parse an entire program, basically a list of expression nodes
-    List<Node> ParseAll() {
-      var program = new List<Node>();
-      while (!Check(Atoms.EOF)) {
-        try {
-          var node = ParseNode();
-          Logger.WriteLine(3, "Node: {0}", node);
-          if (!node.IsEmpty) program.Add(node);  // empty nodes are macros
-        } catch (PolyException ex) {
-          _output.WriteLine("*** {0}", ex.Message);
-        }
+    // Pre-processor handles include, define etc by side-effects 
+    // and removes them from the stream
+    List<Token> ParsePreproc() {
+      var tokens = new List<Token>();
+      while (!Match(Atoms.EOF)) {
+        var token = _lexer.CurrentToken;
+        if (Match(Atoms.LP)) {
+          // Each called func discards tokens and trailing RP
+          if (Match(Atoms.DEFINE)) DefineMacro();
+          else if (Match(Atoms.INCLUDE)) Include();
+          else if (Match(Atoms.VERSION)) CheckVersion();
+          else if (Match(Atoms.NOISY)) Noisy();
+          else tokens.Add(token);
+        } else tokens.Add(TakeToken());
       }
-      return program;
+      return tokens;
     }
 
     // Parse a single node, either an atom or a list in parens
-    // Strip out and handle macros too
+    // Handle macro expansion too
     Node ParseNode() {
       // atom node
       var sym = Take();
@@ -99,65 +90,45 @@ namespace Poly.Compiler {
       case Atoms.LITERAL:
         return LiteralNode.Create(sym.Value);
       case Atoms.LP:
-        break;
+        if (Check(Atoms.MACRO)) {
+          ExpandMacro(Take());
+          return ParseNode();
+        } else {
+          var nodes = new List<Node>();
+          while (!Match(Atoms.RP))
+            nodes.Add(ParseNode());
+          return ListNode.Create(nodes);
+        }
       default:
         throw ErrNotExpect(sym.Atom);
-      }
-      // list node
-      sym = Look();
-      switch (sym.Atom) {
-      case Atoms.DEFINE:
-        Take();
-        return DefineMacro();
-      case Atoms.INCLUDE:
-        Take();
-        return Include();
-      case Atoms.MACRO:
-        Take();
-        return ExpandMacro(sym);
-      case Atoms.NOISY:
-        Take();
-        return Noisy();
-      case Atoms.RP:
-        Take();
-        return Node.Empty();
-      case Atoms.VERSION:
-        Take();
-        return CheckVersion();
-      default:
-        // usually an ident, but can be any kind of list, including start with LP
-        var nodes = new List<Node>();
-        while (!Match(Atoms.RP))
-          nodes.Add(ParseNode());
-        return ListNode.Create(nodes);
       }
     }
 
     // Macro definition is just a name for a list of tokens inside balanced LP RP
     // Defer parsing because tokens will include $n, which must be substituted first
-    Node DefineMacro() {
+    void DefineMacro() {
       if (!Check(Atoms.IDENT)) throw ErrExpect(Atoms.IDENT);
       var name = TakeToken().Value;
       var body = new List<Token>();
       for (var nesting = 0; ; ) {
+        if (Check(Atoms.EOF)) throw ErrNotExpect(Atoms.EOF);
         if (Check(Atoms.LP)) ++nesting;
         else if (Check(Atoms.RP) && --nesting < 0) break;
         body.Add(TakeToken());
       }
       if (!Match(Atoms.RP)) throw ErrExpect(Atoms.RP);
       Symbols.AddExpansion(name, Atoms.MACRO, body);
-      return Node.Empty();
     }
 
     // Macro expansion creates a new scope in which $n refers to MACROARG,
     // which is a token or list of tokens inside balanced LP RP
-    Node ExpandMacro(Symbol macro) {
+    void ExpandMacro(Symbol macro) {
       Symbols.CurrentScope.Push();
       for (var n = 1; !Match(Atoms.RP); ++n) {
         var expansion = new List<Token>();
         if (Match(Atoms.LP)) {
           for (var nesting = 0; ;) {
-            if (!Check(Atoms.EOF)) throw ErrNotExpect(Atoms.EOF);
+            if (Check(Atoms.EOF)) throw ErrNotExpect(Atoms.EOF);
             if (Check(Atoms.LP)) ++nesting;
             else if (Check(Atoms.RP) && --nesting < 0) break;
             expansion.Add(TakeToken());
@@ -165,36 +136,30 @@ namespace Poly.Compiler {
           if (!Match(Atoms.RP)) throw ErrExpect(Atoms.RP);
         } else expansion.Add(TakeToken());
         Symbols.AddExpansion("$" + n.ToString(), Atoms.REPLACE, expansion);
-        //Symbols.AddExpansion("{" + n.ToString() + "}", Atoms.REPLACE, expansion);
       }
-      _lexer.Insert(macro.Body);
-      var ret = ParseNode();
+      _lexer.InsertExpansion(macro.Body);
       Symbols.CurrentScope.Pop();
-      return ret;
     }
 
     // check version, either error or return null node
-    Node CheckVersion() {
+    void CheckVersion() {
       if (!Check(Atoms.LITERAL)) throw ErrExpect(Atoms.LITERAL);
       var version = Take().Name;
       if (!Match(Atoms.RP)) throw ErrExpect(Atoms.RP);
-      return Node.Empty();
     }
 
-    Node Include() {
+    void Include() {
       if (!Check(Atoms.LITERAL)) throw ErrExpect(Atoms.LITERAL);
       var path = Take().Name;
       if (!Match(Atoms.RP)) throw ErrExpect(Atoms.RP);
       if (!_lexer.Include(path)) throw ErrSyntax("file not found: {0}", path);
-      return Node.Empty();
     }
 
-    Node Noisy() {
+    void Noisy() {
       if (!Check(Atoms.LITERAL)) throw ErrExpect(Atoms.LITERAL);
       var path = Take().Name;
       if (!Match(Atoms.RP)) throw ErrExpect(Atoms.RP);
       Logger.Level = path.SafeIntParse() ?? Logger.Level;
-      return Node.Empty();
     }
 
     ///=================================================================
@@ -205,14 +170,7 @@ namespace Poly.Compiler {
       return _lexer.LookAhead(n);
     }
 
-    //// Look ahead by N excluding any EOL
-    //Symbol LookOverEol(int n = 0) {
-    //  for (var i = 0; i <= n; ++i)
-    //    if (_lexer.LookAhead(i).Atom == Atoms.EOL)
-    //      ++n;
-    //  return _lexer.LookAhead(n);
-    //}
-
+    // TODO: convert this to returning a token instead (with positional info)
     Symbol Take() {
       var ret = Look();
       _lexer.Next();
@@ -221,12 +179,9 @@ namespace Poly.Compiler {
 
     Token TakeToken() {
       var ret = _lexer.CurrentToken;
-      _lexer.Next();
+      _lexer.NextToken();
       return ret;
     }
-    //void Untake() {
-    //  _lexer.Back();
-    //}
 
     bool Check(Atoms atom) {
       return atom == Look().Atom;

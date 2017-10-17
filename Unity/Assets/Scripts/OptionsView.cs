@@ -13,28 +13,48 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
 using PolygamoUnity;
+using System;
 
 public class OptionsView : MonoBehaviour {
 
+  // objects
   public Text TitleText;
   public Text HelpText;
   public Text SavedDataText;
   public Toggle SoundToggle;
-  public bool SoundDefault;
+  // these are used to initialise input field
+  public InputField ThinkTimeInput;
+  public InputField StepCountInput;
+  public InputField MaxDepthInput;
 
   GameManager _game { get { return GameManager.Instance; } }
-  BoardModel _model { get { return _game.Model; } }
+  GameBoardModel _model { get { return _game.Model; } }
   HighScores _highscores { get { return _game.HighScores; } }
 
   float _clearclick = 0;
 
-  // Use this for initialization
+  public void ThinkTimeEdit() {
+    _model.ThinkTime = Math.Max(0.1f, Math.Min(9999f, Util.SafeFloatParse(ThinkTimeInput.text) ?? 0));
+    ThinkTimeInput.text = _model.ThinkTime.ToString();
+  }
+
+  public void StepCountEdit() {
+    _model.StepCount = Math.Max(10, Math.Min(9999, Util.SafeIntParse(StepCountInput.text) ?? 0));
+    StepCountInput.text = _model.StepCount.ToString();
+  }
+
+  public void MaxDepthEdit() {
+    _model.MaxDepth = Math.Max(1, Math.Min(999, Util.SafeIntParse(MaxDepthInput.text) ?? 0));
+    MaxDepthInput.text = _model.MaxDepth.ToString();
+  }
+
+  // Suspend panel until requested
   void Awake() {
-    SoundToggle.isOn = !SoundDefault;
     gameObject.SetActive(false);
   }
 
   private void OnEnable() {
+    SoundToggle.isOn = FindObjectOfType<AudioSource>().mute;
     UpdateScores();
     UpdateText();
   }
@@ -51,7 +71,21 @@ public class OptionsView : MonoBehaviour {
 
   void UpdateText() {
     TitleText.text = _model.Title;
-    HelpText.text = _model.Help;
+    StringBuilder sb = new StringBuilder();
+
+    var template = "<size={0}>{1}</size>\n{3}\n";
+    const int HeadingSize = 48;
+    const int TextSize = 36;
+    if (_model.Description != null)
+      sb.AppendFormat(template, HeadingSize,"Description", TextSize,  _model.Description);
+    if (_model.History != null)
+      sb.AppendFormat(template, HeadingSize, "\nHistory", TextSize, _model.History);
+    if (_model.Strategy != null)
+      sb.AppendFormat(template, HeadingSize, "\nStrategy", TextSize, _model.Strategy);
+    HelpText.text = sb.ToString().Trim();
+    ThinkTimeInput.text = _model.ThinkTime.ToString();
+    StepCountInput.text = _model.StepCount.ToString();
+    MaxDepthInput.text = _model.MaxDepth.ToString();
   }
 
   void UpdateScores() {

@@ -61,6 +61,16 @@ namespace Poly.Engine {
     protected object EvalExec() {
       return Evaluator.Exec(this);
     }
+
+    // translate string backslash to CRLF and grave to double-quote for displayable strings only
+    protected TextValue FixText(TextValue text) {
+      var newvalue = text.Value
+        .Replace("\r\r", "\n")
+        .Replace("\r", " ")
+        .Replace('\\', '\n')
+        .Replace('`', '"');
+      return TextValue.Create(newvalue);
+    }
   }
 
   ///---------------------------------------------------------------------------
@@ -84,6 +94,7 @@ namespace Poly.Engine {
   /// </summary>
   internal class MenuCode : CodeBase {
     List<GameCode> _gamecodes = new List<GameCode>();
+    Dictionary<TextValue, TextValue> _translatelookup = new Dictionary<TextValue, TextValue>();
 
     internal MenuDef Exec() {
       EvalExec();
@@ -100,10 +111,16 @@ namespace Poly.Engine {
 
     //--- sexpr api
     void s_Game(GameCode game) {
-      _gamecodes.Insert(0, game);
+      if (_gamecodes.Count != 0) throw Error.Assert("duplicate game definition");
+      _gamecodes.Add(game);
     }
     void s_Variant(GameCode game) {
+      if (_gamecodes.Count == 0) throw Error.Assert("missing game definition");
       _gamecodes.Add(game);
+    }
+    void s_Translate(List<Pair<TextValue,TextValue>> translations) {
+      foreach (var translation in translations)
+        _translatelookup[translation.Item1] = translation.Item2;
     }
   }
 
@@ -152,7 +169,8 @@ namespace Poly.Engine {
     // Generate moves for all pieces on board for this player
     // use pieces only for this player, only if moves defined, and current position on the board
     internal IList<MoveModel> CreateMoves(BoardModel board) {
-      var player = board.Turn.TurnPlayer;
+      var player = board.MovePlayer;
+      //var player = board.Turn.TurnPlayer;
       return board.PlayedPieceLookup
         .Where(p => p.Value.Player == player)
         .Where(p => _piececodes.ContainsKey(p.Value.Piece))
@@ -170,24 +188,24 @@ namespace Poly.Engine {
     void s_Players(List<PlayerValue> players) {
       _gamedef.AddPlayers(players);
     }
-    void s_Option(TextValue option, TypedValue value) { _gamedef.SetProperty(option.Value, value); }
+    void s_Option(TextValue option, OptionValue value) { _gamedef.SetProperty(option.Value, value); }
 
-    void s_Description(TextValue text) { _gamedef.SetProperty("description", text); }
-    void s_History(TextValue text) { _gamedef.SetProperty("history", text); }
-    void s_Strategy(TextValue text) { _gamedef.SetProperty("strategy", text); }
-    void s_Thumbnail(TextValue text) { _gamedef.SetProperty("thumbnail", text); } // image for menu
-    void s_Title(TextValue text) { _gamedef.SetProperty("title", text); }
+    void s_Description(TextValue text) { _gamedef.SetProperty("description", FixText(text)); }
+    void s_History(TextValue text) { _gamedef.SetProperty("history", FixText(text)); }
+    void s_Strategy(TextValue text) { _gamedef.SetProperty("strategy", FixText(text)); }
+    void s_Thumbnail(TextValue text) { _gamedef.SetProperty("thumbnail", FixText(text)); } // image for menu
+    void s_Title(TextValue text) { _gamedef.SetProperty("title", FixText(text)); }
 
-    void s_CaptureSound(TextValue path) { _gamedef.SetProperty("capture", path); }
-    void s_ChangeSound(TextValue path) { _gamedef.SetProperty("change", path); }
-    void s_ClickSound(TextValue path) { _gamedef.SetProperty("click", path); }
-    void s_DrawSound(TextValue path) { _gamedef.SetProperty("draw", path); }
-    void s_DropSound(TextValue path) { _gamedef.SetProperty("drop", path); }
-    void s_LossSound(TextValue path) { _gamedef.SetProperty("loss", path); }
-    void s_MoveSound(TextValue path) { _gamedef.SetProperty("move", path); }
-    void s_OpeningSound(TextValue path) { _gamedef.SetProperty("opening", path); }
-    void s_ReleaseSound(TextValue path) { _gamedef.SetProperty("release", path); }
-    void s_WinSound(TextValue path) { _gamedef.SetProperty("win", path); }
+    void s_CaptureSound(TextValue path) { _gamedef.SetProperty("capture sound", path); }
+    void s_ChangeSound(TextValue path) { _gamedef.SetProperty("change sound", path); }
+    void s_ClickSound(TextValue path) { _gamedef.SetProperty("click sound", path); }
+    void s_DrawSound(TextValue path) { _gamedef.SetProperty("draw sound", path); }
+    void s_DropSound(TextValue path) { _gamedef.SetProperty("drop sound", path); }
+    void s_LossSound(TextValue path) { _gamedef.SetProperty("loss sound", path); }
+    void s_MoveSound(TextValue path) { _gamedef.SetProperty("move sound", path); }
+    void s_OpeningSound(TextValue path) { _gamedef.SetProperty("opening sound", path); }
+    void s_ReleaseSound(TextValue path) { _gamedef.SetProperty("release sound", path); }
+    void s_WinSound(TextValue path) { _gamedef.SetProperty("win sound", path); }
     void s_Music(TextValue path) { _gamedef.SetProperty("music", path); }
     void s_Solution(TextValue path) { _gamedef.SetProperty("solution", path); }
 
@@ -224,15 +242,15 @@ namespace Poly.Engine {
     }
 
     // deprecated TODO:
-    void s_AllowFlipping(TypedValue value) { }
-    void s_AnimateCaptures(TypedValue value) { }
-    void s_AnimateDrops(TypedValue value) { }
-    void s_IncludeOffPieces(TypedValue value) { }
-    void s_MaximalCaptures(TypedValue value) { }
-    void s_PassPartial(TypedValue value) { }
-    void s_PassTurn(TypedValue value) { }
-    void s_RecycleCaptures(TypedValue value) { }
-    void s_RecyclePromotions(TypedValue value) { }
+    void s_AllowFlipping(OptionValue value)      { _gamedef.SetProperty("allow flipping", value); }
+    void s_AnimateCaptures(OptionValue value)    { _gamedef.SetProperty("animate captures", value); }
+    void s_AnimateDrops(OptionValue value)       { _gamedef.SetProperty("animate drops", value); }
+    void s_IncludeOffPieces(OptionValue value)   { _gamedef.SetProperty("include off pieces", value); }
+    void s_MaximalCaptures(OptionValue value)    { _gamedef.SetProperty("maximal captures", value); }
+    void s_PassPartial(OptionValue value)        { _gamedef.SetProperty("pass partial", value); }
+    void s_PassTurn(OptionValue value)           { _gamedef.SetProperty("pass turn", value); }
+    void s_RecycleCaptures(OptionValue value)    { _gamedef.SetProperty("recycle captures", value); }
+    void s_RecyclePromotions(OptionValue value)  { _gamedef.SetProperty("recycle promotions", value); }
   }
 
   ///---------------------------------------------------------------------------
@@ -267,7 +285,7 @@ namespace Poly.Engine {
       var curpos = position;
       foreach (var def in occupiers) {
         if (def.IsDirection) {
-          curpos = _board.Def.GetPosition(curpos, def.Direction);
+          curpos = _board.Def.GetPosition(curpos, _board.CurrentPlayer, def.Direction);
           if (curpos == null) return false; // off board
         } else if (!_board.IsOccupied(def.PlayerKind, def.Piece, curpos))
           return false; // piece mismatch
@@ -291,10 +309,18 @@ namespace Poly.Engine {
       return BoolValue.Create(_phase1 && _board.PiecesCount(PlayerKinds.Any, piece) == (int)quantity.Value);
     }
     // specials for board testing
-    BoolValue s_Captured(PieceValue[] pieces) { return BoolValue.Create(_phase2 && _board.Captured(pieces)); }
-    BoolValue s_Checkmated(PieceValue[] pieces) { return BoolValue.Create(_phase2 && _board.Checkmated(pieces)); }
-    BoolValue s_Repetition() { return BoolValue.Create(_phase2 && _board.Repetition()); }
-    TypedValue s_Stalemated() { return BoolValue.Create(_phase2 && _board.Stalemated()); }
+    BoolValue s_Captured(PieceValue[] pieces) {
+      return BoolValue.Create(_phase2 && _board.Captured(pieces));
+    }
+    BoolValue s_Checkmated(PieceValue[] pieces) {
+      return BoolValue.Create(_phase2 && _board.Checkmated(pieces));
+    }
+    BoolValue s_Repetition() {
+      return BoolValue.Create(_phase2 && _board.Repetition());
+    }
+    TypedValue s_Stalemated() {
+      return BoolValue.Create(_phase2 && _board.Stalemated());
+    }
   }
 
   ///---------------------------------------------------------------------------
@@ -355,7 +381,10 @@ namespace Poly.Engine {
       foreach (var posdef in positionsdefs)
         _boarddef.SetPosition(posdef.Item1, posdef.Item2);
     }
-    void s_Symmetry(PlayerValue player, List<Pair<DirectionValue, DirectionValue>> directionpairs) { }
+    void s_Symmetry(PlayerValue player, List<Pair<DirectionValue, DirectionValue>> directionpairs) {
+      foreach (var dirpair in directionpairs)
+        _boarddef.AddSymmetry(player, dirpair.Item1, dirpair.Item2);
+    }
     void s_Unlink(List<TypedValue[]> unlinks) { // TODO: parse
       foreach (var ulk in unlinks) {
         if (!(ulk.Length >= 1 && ulk[0] is PositionValue)) throw Error.Evaluation("bad unlink argument: {0}", ulk.Join());
@@ -363,9 +392,12 @@ namespace Poly.Engine {
         if (ulk.Length == 1)
           _boarddef.RemoveLink(pos);
         else if (ulk.Length == 2 && (ulk[1] is PositionValue || ulk[1] is DirectionValue)) {
-          if (ulk[1] is PositionValue)
+          if (ulk[1] is DirectionValue)
+            _boarddef.RemoveLink(pos, ulk[1] as DirectionValue);
+          else { // for pair of positions, remove in both directions
             _boarddef.RemoveLink(pos, ulk[1] as PositionValue);
-          else _boarddef.RemoveLink(pos, ulk[1] as DirectionValue);
+            _boarddef.RemoveLink(ulk[1] as PositionValue, pos);
+          }
         } else throw Error.Evaluation("bad unlink argument: {0}", ulk.Join());
       }
     }
@@ -498,9 +530,9 @@ namespace Poly.Engine {
     //--- sexpr api and data
 
     void s_Attribute(AttributeValue name, BoolValue value) { _piecedef.AttributeLookup[name] = value; }
-    void s_Description(TextValue text) { _piecedef.HelpLookup[HelpKinds.Description] = text; }
+    void s_Description(TextValue text) { _piecedef.HelpLookup[HelpKinds.Description] = FixText(text); }
     void s_Dummy() { _piecedef.IsDummy = true; }
-    void s_Help(TextValue text) { _piecedef.HelpLookup[HelpKinds.Help] = text; }
+    void s_Help(TextValue text) { _piecedef.HelpLookup[HelpKinds.Help] = FixText(text); }
     void s_Image(List<PieceImages> imagedefs) {
       foreach (var def in imagedefs)
         _piecedef.AddImages(def.Player, def.Images);
@@ -592,7 +624,7 @@ namespace Poly.Engine {
     PositionValue ToPosition(PositionOrDirection posordir) {
       var pos = (posordir == null) ? _state.Current
               : (posordir.IsPosition) ? posordir.Position
-              : _board.Def.GetPosition(_state.Current, posordir.Direction);
+              : _board.Def.GetPosition(_state.Current, _board.CurrentPlayer, posordir.Direction);
       return pos;
     }
 
@@ -618,7 +650,7 @@ namespace Poly.Engine {
 
     static Dictionary<GoKinds, Func<MoveGenCode, PositionValue>> _golookup = new Dictionary<GoKinds, Func<MoveGenCode, PositionValue>>() {
       { GoKinds.From, m=>m._state.From },
-      { GoKinds.To, m=>m._state.To },
+      { GoKinds.To, m=>m._state.To ?? m._state.Current },
       { GoKinds.Mark, m=>m._state.Mark },
       { GoKinds.LastFrom, m=>m._state.LastFrom },
       { GoKinds.LastTo, m=>m._state.LastTo },
@@ -629,10 +661,11 @@ namespace Poly.Engine {
     void s_Mark(PositionOrDirection posordir = null) {
       _state.Mark = ToPositionSafe(posordir);
     }
-    void s_Opposite(DirectionValue direction) {
-      _state.Current = _board.Def.GetOpposite(_state.Current, direction) ?? BreakSafe();
+    // return position in opposite direction with respect to current position
+    PositionValue s_Opposite(DirectionValue direction) {
+      return _board.Def.GetOpposite(_state.Current, direction) ?? BreakSafe();
     }
-
+    
     // setters
     void s_SetAttribute(AttributeValue ident, BoolValue value) {
       _state.AddSetAttribute(ident, value);
@@ -653,6 +686,8 @@ namespace Poly.Engine {
       _state.AddPieceMoves(pieces);
     }
     void s_AddPartial(List<TypedValue> pieceormovetypes = null) { // TODO: parse
+      if (pieceormovetypes != null && !pieceormovetypes.All(p => p is PieceValue))
+        throw Error.NotImpl("add-partial move-type");
       var pieces = (pieceormovetypes == null) ? null 
         : pieceormovetypes.Where(p => p is PieceValue)
         .Cast<PieceValue>();
@@ -660,6 +695,8 @@ namespace Poly.Engine {
       _state.Partial = true;
     }
     void s_AddCopyPartial(List<TypedValue> pieceormovetypes = null) {// TODO: parse
+      if (pieceormovetypes != null && !pieceormovetypes.All(p => p is PieceValue))
+        throw Error.NotImpl("add-partial move-type");
       _state.Kind = MoveKinds.Copy;
       var pieces = (pieceormovetypes == null) ? null
         : pieceormovetypes.Where(p => p is PieceValue)
@@ -674,6 +711,7 @@ namespace Poly.Engine {
       else Break();
     }
     void s_Cascade() {
+      throw Error.NotImpl("cascade");
     }
     void s_ChangeOwner(PositionOrDirection posordir = null) {
       var pos = ToPositionSafe(posordir);
@@ -714,7 +752,6 @@ namespace Poly.Engine {
     BoolValue s__Attribute(AttributeValue attribute, PositionOrDirection posordir = null) {
       return BoolValue.Create(_board.IsAttributeSet(attribute, ToPosition(posordir)));
     }
-    //BoolValue s__Attribute() { return BoolValue.False; }
 
     // simple state enquiries
     BoolValue s_Marked_(PositionOrDirection posordir = null) { return BoolValue.Create(_state.Mark == ToPosition(posordir)); }
@@ -732,9 +769,15 @@ namespace Poly.Engine {
     BoolValue s_LastTo_(PositionOrDirection posordir = null) { return BoolValue.Create(_state.LastTo == ToPosition(posordir)); }
     BoolValue s_InZone_(ZoneValue zone, PositionOrDirection posordir = null) { return BoolValue.Create(_board.InZone(zone, ToPosition(posordir))); }
 
-    BoolValue s_Attacked_(TypedValue movetype = null, PositionOrDirection posordir = null) { return BoolValue.False; } // TODO: attacked
-    BoolValue s_Defended_(TypedValue movetype = null, PositionOrDirection posordir = null) { return BoolValue.False; } // TODO: defended
-    BoolValue s_GoalPosition_(PositionOrDirection posordir = null) { return BoolValue.False; } // TODO: goal position
+    BoolValue s_Attacked_(TypedValue movetype = null, PositionOrDirection posordir = null) {
+      throw Error.NotImpl("attacked?");
+    }
+    BoolValue s_Defended_(TypedValue movetype = null, PositionOrDirection posordir = null) {
+      throw Error.NotImpl("defended?");
+    }
+    BoolValue s_GoalPosition_(PositionOrDirection posordir = null) {
+      throw Error.NotImpl("goal-position?");
+    }
 
     BoolValue s_NotAdjacentToEnemy_(PositionOrDirection posordir = null)                        { return s_Not(s_AdjacentToEnemy_(posordir)); }
     BoolValue s_NotAttacked_(TypedValue movetype = null, PositionOrDirection posordir = null)   { return s_Not(s_Attacked_(movetype, posordir)); }

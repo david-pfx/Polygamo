@@ -17,7 +17,7 @@ using PolygamoUnity;
 public enum SelectModes {
   None, Script, Variant
 }
-public class SelectItemView : MonoBehaviour {
+public class VariantItemView : MonoBehaviour {
   const int ShortLength = 10;
 
   public Text TitleText;
@@ -25,7 +25,7 @@ public class SelectItemView : MonoBehaviour {
   public GameObject Thumbnail;
 
   GameManager _game { get { return GameManager.Instance; } }
-  BoardModel _model { get { return _game.Model; } }
+  GameBoardModel _model { get { return _game.Model; } }
   SelectModes _mode = SelectModes.None;
   int _itemindex;
   Action<int> _selectaction;
@@ -34,7 +34,7 @@ public class SelectItemView : MonoBehaviour {
   string _basetext;
 
   // pseudo-ctor
-  internal SelectItemView Setup(Action<int> action, Text fulltextobj, SelectModes mode, int index) {
+  internal VariantItemView Setup(Action<int> action, Text fulltextobj, SelectModes mode, int index) {
     _selectaction = action;
     _fulltextobj = fulltextobj;
     _mode = mode;
@@ -42,23 +42,24 @@ public class SelectItemView : MonoBehaviour {
     return this;
   }
 
+  // Show game script as filename, with filename, title and thumbnail or board
   internal void ShowScript(int index) {
     var script = _game.Items.ScriptList[index];
-    _titletext = script;
-    _basetext = "";
-    TitleText.text = _titletext.Shorten(ShortLength);
-    BaseText.text = _basetext.Shorten(ShortLength);
-    _game.Items.LoadImage(Thumbnail, script, "thumbnail");
+    _titletext = script.Filename;
+    _basetext = index.ToString();
+    TitleText.text = _titletext; //.Shorten(ShortLength);
+    BaseText.text = _basetext; //.Shorten(ShortLength);
+    _game.Items.LoadImage(script, "thumbnail", Thumbnail);
   }
 
+  // show game variant as filename, title and thumbnail or board
   internal void ShowVariant(int index) {
-    var script = _model.ScriptName;
     _titletext = _game.Model.GameList[index];
-    _basetext = script;
-    TitleText.text = _titletext.Shorten(ShortLength);
-    BaseText.text = _basetext.Shorten(ShortLength);
+    _basetext = _model.Script.Filename;
+    TitleText.text = _titletext; //.Shorten(ShortLength);
+    BaseText.text = _basetext; //.Shorten(ShortLength);
     var b = _game.Model.Create(index);
-    _game.Items.LoadImage(Thumbnail, script, b.ThumbnailList[index] ?? b.Images[0]);
+    _game.Items.LoadImage(_model.Script, b.ThumbnailList[index] ?? b.Images[0], Thumbnail);
   }
 
   void Start() {
@@ -80,4 +81,5 @@ public class SelectItemView : MonoBehaviour {
   void OnMouseDown() {
     _selectaction(_itemindex);
   }
+
 }

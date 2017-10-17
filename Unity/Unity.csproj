@@ -88,17 +88,23 @@
     <Compile Include="Assets\Scripts\ItemManager.cs" />
     <Compile Include="Assets\Scripts\Loader.cs" />
     <Compile Include="Assets\Scripts\OptionsView.cs" />
-    <Compile Include="Assets\Scripts\SelectItemView.cs" />
-    <Compile Include="Assets\Scripts\SelectionView.cs" />
+    <Compile Include="Assets\Scripts\ScriptItemView.cs" />
+    <Compile Include="Assets\Scripts\ScriptSelectionView.cs" />
     <Compile Include="Assets\Scripts\SplashView.cs" />
     <Compile Include="Assets\Scripts\TileView.cs" />
     <Compile Include="Assets\Scripts\UiManager.cs" />
     <Compile Include="Assets\Scripts\Util.cs" />
+    <Compile Include="Assets\Scripts\VariantItemView.cs" />
+    <Compile Include="Assets\Scripts\VariantSelectionView.cs" />
+    <Compile Include="Assets\Scripts\bmploader.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\Resources\Games\Kono\Kono.txt" />
+    <None Include="Assets\Resources\Games\Kono\readme.txt" />
     <None Include="Assets\Resources\Games\SampleTTT\SampleTTT.txt" />
+    <None Include="Assets\Resources\Games\SampleTTT\readme.txt" />
     <None Include="Assets\Resources\Games\TicTacToe\TicTacToe.txt" />
+    <None Include="Assets\Resources\Games\TicTacToe\readme.txt" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Target Name="GenerateTargetFrameworkMonikerAttribute" />

@@ -319,6 +319,19 @@ namespace Poly.Common {
     }
   }
 
+  /// <summary>
+  /// Subclass of number used for parsing options
+  /// </summary>
+  public class OptionValue : NumberValue {
+    internal static readonly OptionValue Forced = new OptionValue { Value = -2 };
+    internal static readonly new OptionValue Default = new OptionValue { Value = -1 };
+    internal static readonly OptionValue False = new OptionValue { Value = 0 };
+    internal static readonly OptionValue True = new OptionValue { Value = 1 };
+    public static new OptionValue Create(decimal value) {
+      return new OptionValue { Value = value };
+    }
+  }
+
   ///-------------------------------------------------------------------
   /// <summary>
   /// A value that is like a string but is used as an identifier

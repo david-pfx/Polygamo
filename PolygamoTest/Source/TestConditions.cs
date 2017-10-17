@@ -34,7 +34,7 @@ namespace PolygamoTest {
         @" (piece (piece1))" +
         @" (win-condition (relcondttt))" +
         @")";
-      var game = PolyGame.Create("bs1", new StringReader(testprog));
+      var game = PolyGame.CreateInner("bs1", new StringReader(testprog));
 
       //Assert.AreEqual("Win", game.GameResult.ToString());
       game.MakeMove(0);
@@ -72,9 +72,9 @@ namespace PolygamoTest {
       };
       for (int i = 0; i < matrix.GetLength(0); i++) {
         var tp = String.Format(testprog, matrix[i, 0]);
-        var game = PolyGame.Create("bs1", new StringReader(tp));
+        var game = PolyGame.CreateInner("bs1", new StringReader(tp));
         game.MakeMove(0);
-        var expecteds = Splitter(matrix[i, 1]);
+        var expecteds = matrix[i, 1].SplitXY();
         Assert.AreEqual(expecteds[0], game.ResultPlayer.ToString(), matrix[i, 0]);
         Assert.AreEqual(expecteds[1], game.GameResult.ToString(), matrix[i, 0]);
         //var expected = game.LastPlayer + "," + game.GameResult;
@@ -113,9 +113,9 @@ namespace PolygamoTest {
       };
       for (int i = 0; i < matrix.GetLength(0); i++) {
         var tp = String.Format(testprog, matrix[i, 0]);
-        var game = PolyGame.Create("bs1", new StringReader(tp));
+        var game = PolyGame.CreateInner("bs1", new StringReader(tp));
         game.MakeMove(0);
-        var expecteds = Splitter(matrix[i, 1]);
+        var expecteds = matrix[i, 1].SplitXY();
         Assert.AreEqual(expecteds[0], game.ResultPlayer.ToString(), matrix[i, 0]);
         Assert.AreEqual(expecteds[1], game.GameResult.ToString(), matrix[i, 0]);
       }
@@ -136,6 +136,7 @@ namespace PolygamoTest {
         @")";
       var matrix = new string[,] {
         { "man (A-5)                    ", "-,None" },
+        //{ "man A-5                      ", "-,None" },  -- TODO
         { "man (A-1)                    ", "X,Win" },
         { "man (A-2)                    ", "X,Win" },
         { "man (A-1 A-2 A-3)            ", "-,None" },
@@ -168,9 +169,9 @@ namespace PolygamoTest {
       };
       for (int i = 0; i < matrix.GetLength(0); i++) {
         var tp = String.Format(testprog, matrix[i, 0]);
-        var game = PolyGame.Create("bs1", new StringReader(tp));
+        var game = PolyGame.CreateInner("bs1", new StringReader(tp));
         game.MakeMove(0);
-        var expecteds = Splitter(matrix[i, 1]);
+        var expecteds = matrix[i, 1].SplitXY();
         Assert.AreEqual(expecteds[0], game.ResultPlayer.ToString(), matrix[i, 0]);
         Assert.AreEqual(expecteds[1], game.GameResult.ToString(), matrix[i, 0]);
       }
@@ -202,9 +203,9 @@ namespace PolygamoTest {
         var setups = matrix[i, 0].Split(',');
         var tp = String.Format(testprog, setups[0], setups[1]);
         //var tp = String.Format(testprog, matrix[i, 0], matrix[i, 1]);
-        var game = PolyGame.Create("bs1", new StringReader(tp));
+        var game = PolyGame.CreateInner("bs1", new StringReader(tp));
         game.MakeMove(0);
-        var expecteds = Splitter(matrix[i, 1]);
+        var expecteds = matrix[i, 1].SplitXY();
         Assert.AreEqual(expecteds[0], game.ResultPlayer.ToString(), matrix[i, 0]);
         Assert.AreEqual(expecteds[1], game.GameResult.ToString(), matrix[i, 0]);
       }
@@ -251,10 +252,10 @@ namespace PolygamoTest {
 
       for (int i = 0; i < matrix.GetLength(0); i++) {
         var tp = String.Format(testprog, matrix[i, 0]);
-        var game = PolyGame.Create("cwld", new StringReader(tp));
+        var game = PolyGame.CreateInner("cwld", new StringReader(tp));
         for (int j = 0; game.GameResult == ResultKinds.None; j++) {
           game.MakeMove(0);
-          var expecteds = Splitter(matrix[i, 1], j);
+          var expecteds = matrix[i, 1].SplitXY(j);
           Assert.AreEqual(expecteds[0], game.ResultPlayer.ToString(), matrix[i, 0]);
           Assert.AreEqual(expecteds[1], game.GameResult.ToString(), matrix[i, 0]);
         }
@@ -304,9 +305,9 @@ namespace PolygamoTest {
       };
       for (int i = 0; i < matrix.GetLength(0); i++) {
         var tp = String.Format(testprog, matrix[i, 0]);
-        var game = PolyGame.Create("cwld", new StringReader(tp));
+        var game = PolyGame.CreateInner("cwld", new StringReader(tp));
         game.MakeMove(0);
-        var expecteds = Splitter(matrix[i, 1]);
+        var expecteds = matrix[i, 1].SplitXY();
         Assert.AreEqual(expecteds[0], game.ResultPlayer.ToString(), matrix[i, 0]);
         Assert.AreEqual(expecteds[1], game.GameResult.ToString(), matrix[i, 0]);
       }
@@ -342,20 +343,50 @@ namespace PolygamoTest {
 
       for (int i = 0; i < matrix.GetLength(0); i++) {
         var tp = String.Format(testprog, matrix[i, 0]);
-        var game = PolyGame.Create("cwld", new StringReader(tp));
+        var game = PolyGame.CreateInner("cwld", new StringReader(tp));
         for (int j = 0; game.GameResult == ResultKinds.None; j++) {
           game.MakeMove(0);
-          var expecteds = Splitter(matrix[i, 1], j);
+          var expecteds = matrix[i, 1].SplitXY(j);
           Assert.AreEqual(expecteds[0], game.ResultPlayer.ToString(), matrix[i, 0]);
           Assert.AreEqual(expecteds[1], game.GameResult.ToString(), matrix[i, 0]);
         }
       }
     }
 
-    // split by ';', pick nth part, split by ','
-    string[] Splitter(string target, int index = 0) {
-      var parts = target.Split(';');
-      return (index < parts.Length) ? parts[index].Split(',') : null;
+    // strategy: eventually both sides run out of N moves and there is a result
+    [TestMethod]
+    public void CondPostMoveGen() {
+      Logger.Open(1);
+      var testprog =
+        @"(include ""testincl.poly"")" +
+        @"(game (gamestub1)" +
+        @" (board (boardgrid33))" +
+        @" (piece (name man) (moves (n add)) )" +
+        @" (board-setup (X (man B-1)) (O (man A-1)) )" +
+        @" {0}" +
+        @")";
+
+
+      var matrix = new string[,] {
+        { "",                                                     "-,Draw" },
+        { "(pass-turn false)",                                    "-,Draw" },
+        { "(pass-turn true)",                                     "-,None;-,None;-,None;-,None" },
+        { "(pass-turn forced)",                                   "-,None;-,None;-,None;-,None" },
+        { "(win-condition (X O) stalemated)",                     "O,Win" },
+        { "(pass-turn false) (win-condition (X O) stalemated)",   "O,Win" },
+        { "(pass-turn true) (win-condition (X O) stalemated)",    "-,None;-,None;-,None;-,None" },
+        { "(pass-turn forced) (win-condition (X O) stalemated)",  "-,None;-,None;-,None;-,None" },
+      };
+      for (int i = 0; i < matrix.GetLength(0); i++) {
+        var tp = String.Format(testprog, matrix[i, 0]);
+        var game = PolyGame.CreateInner("cwld", new StringReader(tp));
+        for (int j = 0; game.GameResult == ResultKinds.None && j < 4; j++) {
+          game.MakeMove(0);
+          var expecteds = matrix[i, 1].SplitXY(j);
+          Assert.AreEqual(expecteds[0], game.ResultPlayer.ToString(), matrix[i, 0]);
+          Assert.AreEqual(expecteds[1], game.GameResult.ToString(), matrix[i, 0]);
+        }
+      }
     }
   }
 }

@@ -23,7 +23,8 @@ public class UiManager : MonoBehaviour {
 
   public GameObject MainPanel;
   public GameObject OptionsPanel;
-  public GameObject SelectionPanel;
+  public GameObject VariantSelectionPanel;
+  public GameObject ScriptSelectionPanel;
   public GameObject ResultPanel;
   public Animator InitiallyOpen;
   public int VerticalBorderPx;
@@ -39,12 +40,13 @@ public class UiManager : MonoBehaviour {
   public Text ScoreText3;
   public Text PlayerTitle;
   public Text PlayerText;
+  public Text StatusText;
 
   const string OpenPropertyName = "isopen";
   const string ClosedStateName = "closed";
 
   GameManager _game { get { return GameManager.Instance; } }
-  BoardModel _model { get { return _game.Model; } }
+  GameBoardModel _model { get { return _game.Model; } }
   Animator _nowopen = null;  
   bool _closing;
 
@@ -54,6 +56,10 @@ public class UiManager : MonoBehaviour {
     { ResultKinds.Lose, "{0} has Lost" },
     { ResultKinds.Draw, "Draw" },
   };
+
+  void Start() {
+    StatusText.text = "";
+  }
 
   void Update() {
     if (_model == null || _game.State == GameState.Startup) _game.Quit();
@@ -74,40 +80,69 @@ public class UiManager : MonoBehaviour {
         else if (Input.GetKeyDown(KeyCode.Escape)) QuitButtonHandler();
         else if (Input.GetKeyDown(KeyCode.R)) RestartButtonHandler();
         else if (Input.GetKeyDown(KeyCode.N)) NewGameButtonHandler();
-        else if (Input.GetKeyDown(KeyCode.Space) && _game.State == GameState.GameOver) NewGameButtonHandler();
         else if (Input.GetKeyDown(KeyCode.O)) OptionsButtonHandler();
-        else if (Input.GetKeyDown(KeyCode.S)) SelectionButtonHandler();
+        else if (Input.GetKeyDown(KeyCode.S)) ScriptSelectionButtonHandler();
+        else if (Input.GetKeyDown(KeyCode.V)) VariantSelectionButtonHandler();
+        else if (Input.GetKeyDown(KeyCode.P)) SkipButtonHandler();
+        else if (Input.GetKeyDown(KeyCode.Space) && _game.State == GameState.GameOver) NewGameButtonHandler();
+        else if (Input.GetMouseButtonDown(0) && _game.State == GameState.GameOver) NewGameButtonHandler();
       }
     }
   }
 
-  public void NewGameButtonHandler() {
-    _game.NewGame(true);
+  public void NewGameButtonHandler(string input = "click") {
+    DoButtonAction(input, "Start new game", StatusText, () => _game.NewGame());
   }
 
-  public void RestartButtonHandler() {
-    _game.NewGame();
+  public void RestartButtonHandler(string input = "click") {
+    DoButtonAction(input, "Restart game", StatusText, () => _game.RestartGame());
   }
 
-  public void BackButtonHandler() {
-    _model.Undo();
+  public void BackButtonHandler(string input = "click") {
+    if (_model.CanUndo)
+      DoButtonAction(input, "Undo move", StatusText, () => _model.Undo());
+    else DoButtonAction(input, "Cannot undo", StatusText);
   }
 
-  public void OptionsButtonHandler() {
-    OpenPanel(OptionsPanel);
+  public void SkipButtonHandler(string input = "click") {
+    if (_model.CanPass)
+      DoButtonAction(input, "Pass turn", StatusText, () => _model.Undo());
+    else DoButtonAction(input, "Cannot pass", StatusText);
   }
 
-  public void SelectionButtonHandler() {
-    OpenPanel(SelectionPanel);
+  public void OptionsButtonHandler(string input = "click") {
+    DoButtonAction(input, "Options and help", StatusText, () => OpenPanel(OptionsPanel));
   }
 
-  public void QuitButtonHandler() {
+  public void VariantSelectionButtonHandler(string input = "click") {
+    DoButtonAction(input, "Select game variants", StatusText, () => OpenPanel(VariantSelectionPanel));
+  }
+
+  public void ScriptSelectionButtonHandler(string input = "click") {
+    DoButtonAction(input, "Select games scripts", StatusText, () => OpenPanel(ScriptSelectionPanel));
+  }
+
+  public void QuitButtonHandler(string input = "click") {
+    DoButtonAction(input, "Quit", StatusText, () => Quit());
+  }
+
+  public void CloseButtonHandler(string input = "click") {
+    DoButtonAction(input, "Close", StatusText, () => CloseCurrent());
+  }
+
+  void Quit() { 
     _game.HighScores.UpdateScore();
     _game.HighScores.SaveScore();
     Application.Quit();
 #if UNITY_EDITOR
     UnityEditor.EditorApplication.isPlaying = false;
 #endif
+  }
+
+  internal void DoButtonAction(string input, string prompt, Text status, Action action = null) {
+    if (input == "enter") status.text = prompt;
+    else if (input == "exit") status.text = "";
+    else if (input == "click" && action != null) action();
   }
 
   //****************************************************************************

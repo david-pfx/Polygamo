@@ -98,7 +98,7 @@ namespace Poly.Compiler {
     internal void Add(Symbol sym, string name = null) {
       if (name != null) sym.Name = name;
       sym.Level = this.Level;
-      Logger.Assert(!Dict.ContainsKey(sym.Name), sym.Name);
+      Logger.Assert(!Dict.ContainsKey(sym.Name), "add dup {0}", sym.Name);
       Dict.Add(sym.Name, sym);
     }
 

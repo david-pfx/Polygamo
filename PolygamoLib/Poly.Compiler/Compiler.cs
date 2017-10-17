@@ -24,6 +24,106 @@ using System.Diagnostics;
 /// Recursive descent parser driven mainly by Builtin type definitions
 /// </summary>
 namespace Poly.Compiler {
+  /// <summary>
+  /// Hold top level node structure to facilitate variant processing
+  /// </summary>
+  internal class GameIndex {
+    Func<Node, string> name = (Node a) => a.AsList[0].AsIdent.Name;
+    readonly HashSet<string> condlookup = new HashSet<string> {
+      "win-condition", "loss-condition", "draw-condition"
+    };
+    IList<Node> _gnodes;
+    SymbolTable _symbols;
+    Dictionary<string, Node> _gpiecelookup;
+
+    // Create piece index from array of section nodes
+    // Note: Also does sanity check (first peek inside game/variant definition)
+    // The passed in parser is used to generate meaningful errors
+    Dictionary<string, Node> CreatePieceLookup(NodeListParser nlp) {
+      Dictionary<string, Node> lookup = new Dictionary<string, Node>();
+      while (!nlp.Done) {
+        var pnode = nlp.Current; // could be a piece section
+        var nlp2 = nlp.GetParser();
+        // note: cannot use anything that relies on CheckedIdent
+        nlp.Expect(nlp2.IsIdent, "section identifier");
+        if (nlp2.GetNode().AsIdent.Name == "piece") {
+          while (true) {
+            nlp2.Expect(nlp2.IsList, "piece name");
+            var nlp3 = nlp2.GetParser();
+            if (nlp3.IsIdent && nlp3.GetNode().AsIdent.Name == "name") {
+              if (nlp3.IsIdent) {
+                lookup[nlp3.GetNode().AsIdent.Name] = pnode;
+                break;
+              }
+            }
+          }
+        }
+      }
+      return lookup;
+    }
+
+    // record info about base game
+    internal IList<Node> IndexGame(NodeListParser nlp) {
+      _symbols = nlp.Symbols;
+
+      // Step 1. Construct piece index and remove pieces
+      _gpiecelookup = CreatePieceLookup(nlp);
+      _gnodes = nlp.Nodes.Where(n => name(n) != "piece").ToList();
+
+      // step 2. Reconstruct node list while predefining piece names (arg is empty dict)
+      return _gnodes.Concat(GetPieceList(new Dictionary<string, Node>())).ToList();
+    }
+
+    // merge game and variant to create new game
+    internal IList<Node> MergeVariant(NodeListParser nlp) {
+
+      // Rule 1. Remove all piece nodes -- special handling at end
+      var plookup = CreatePieceLookup(nlp);
+      var vnodes = nlp.Nodes.Where(n => name(n) != "piece").ToList();
+
+      // Rule 2. If variant has any conditions, remove all game conditions
+      var hascond = vnodes.Any(v => condlookup.Contains(name(v)));
+      var gnodesng = (hascond) ? _gnodes.Where(n => !condlookup.Contains(name(n))) : _gnodes;
+
+      // Rule 3. For each game node, replace with matching variant node if any
+      // Note: must use each variant node only once; preserves order of input file
+      var newnodes = new List<Node>();
+      foreach (var n in gnodesng) {
+        var i = vnodes.FindIndex(v => name(n) == name(v));
+        if (i != -1) {
+          newnodes.Add(vnodes[i]);
+          vnodes.RemoveAt(i);
+        } else newnodes.Add(n);
+      }
+
+      // Rule 3. Append any unmatched variant nodes to the end, followed by pieces
+      newnodes.AddRange(vnodes);
+      newnodes.AddRange(GetPieceList(plookup));
+
+//      Logger.WriteLine(3, "Merge {0} '{1}' '{2}'", hascond, vnodes.Select(n => name(n)).Join(),
+//        newnodes.Select(n => name(n)).Join());
+      return newnodes;
+    }
+
+    // Combine two piece lookups into a list, adding each to the symbol table
+    IList<Node> GetPieceList(Dictionary<string, Node> variantpiecelookup) {
+      var piecelist = new List<Node>();
+      foreach (var name in _gpiecelookup.Keys) {
+        piecelist.Add(variantpiecelookup.ContainsKey(name) ? variantpiecelookup[name] : _gpiecelookup[name]);
+        _symbols.DefineValue(name, PieceValue.Create(name));
+      }
+      foreach (var name in variantpiecelookup.Keys)
+        if (!_gpiecelookup.ContainsKey(name)) {
+          piecelist.Add(variantpiecelookup[name]);
+          _symbols.DefineValue(name, PieceValue.Create(name));
+        }
+      return piecelist;
+    }
+  }
+
+  /// <summary>
+  /// Base class provides lookup tables and utility methods
+  /// </summary>
   internal class CompilerBase {
 
     internal static string BasePath;
@@ -40,12 +140,14 @@ namespace Poly.Compiler {
       // will create new symbol and store in symbol table, so other nodes see the same thing
       if (node.Sym.IsUndef)
         Symbols.DefineValue(node.Name, value);
+      else if (value.GetType() == typeof(IdentValue) && node.Sym.Value is IdentValue)
+        ; // any subclass will do for flag. TODO: reverse operation if flag defined first
       else _currentparser.Syntax("already defined {0} as type {1}", node.Name, node.Sym.DataType);
       return value;
     }
 
     protected AttributeValue DefAttribute(IdentNode node) {
-      return DefSymbolValue(node, new AttributeValue { Value = node.Name }) as AttributeValue;
+      return DefSymbolValue(node, AttributeValue.Create(node.Name)) as AttributeValue;
     }
 
     protected DirectionValue DefDirection(IdentNode node) {
@@ -57,11 +159,11 @@ namespace Poly.Compiler {
     }
 
     protected PieceValue DefPiece(IdentNode node) {
-      return DefSymbolValue(node, new PieceValue { Value = node.Name }) as PieceValue;
+      return DefSymbolValue(node, PieceValue.Create(node.Name)) as PieceValue;
     }
 
     protected PlayerValue DefPlayer(IdentNode node) {
-      return DefSymbolValue(node, new PlayerValue { Value = node.Name }) as PlayerValue;
+      return DefSymbolValue(node, PlayerValue.Create(node.Name)) as PlayerValue;
     }
 
     protected PositionValue DefPosition(IdentNode node) {
@@ -76,58 +178,21 @@ namespace Poly.Compiler {
       return DefSymbolValue(node, new ZoneValue { Value = node.Name }) as ZoneValue;
     }
 
-    protected PositionOrZone ParsePositionOrZone(NodeListParser nlp) {
-      if (nlp.IsValue) {
-        var value = nlp.GetValue();
-        if (value is PositionValue || value is ZoneValue)
-          return new PositionOrZone { Value = value };
-        else { }
-      }
-      nlp.Expected("position or zone");
-      return null;
-    }
+    static readonly Dictionary<string, OptionValue> _optionlookup = new Dictionary<string, OptionValue> {
+      { "true", OptionValue.True },
+      { "false", OptionValue.False },
+      { "default", OptionValue.Default },
+      { "forced", OptionValue.Forced },
+    };
 
-    protected Maybe<PositionOrZone> ParseMaybePositionOrZone(NodeListParser nlp) {
-      if (nlp.IsValue) {  
-        var value = nlp.Current.AsValue;
-        if (value is PositionValue || value is ZoneValue)
-          return new Maybe<PositionOrZone> { Value = ParsePositionOrZone(nlp) };
-      }
-      return new Maybe<PositionOrZone> { };
-    }
-
-    protected PositionOrDirection ParsePositionOrDirection(NodeListParser nlp) {
-      if (nlp.IsValue) {
-        var value = nlp.GetValue();
-        if (value is PositionValue || value is DirectionValue)
-          return new PositionOrDirection { Value = value };
-      }
-      nlp.Expected("position or direction");
-      return null;
-    }
-
-    protected GoKinds ParseGoKind(NodeListParser nlp) {
-      var ident = nlp.GetIdent();
-      var gosym = Symbols.Find(ident.Name, PredefKinds.GO);
-      nlp.Expect(gosym != null, "valid go target");
-      return gosym.GoKind;
-    }
-
-    protected Maybe<PlayerValue[]> ParseMaybePlayers(NodeListParser nlp) {
-      if (!(nlp.IsList && nlp.PeekList.IsPlayer)) return Maybe<PlayerValue[]>.Null;
-      return Maybe<PlayerValue[]>.Create(nlp.GetParser().UntilDone(n => DefPlayer(n.GetIdent())).ToArray());
-    }
-
-    protected Maybe<PieceValue> ParseMaybePiece(NodeListParser nlp) {
-      return (nlp.IsIdent && nlp.Current.IsPiece)
-        ? Maybe<PieceValue>.Create(DefPiece(nlp.GetIdent()))
-        : Maybe<PieceValue>.Null;
-    }
-
-    protected Maybe<PlayerValue> ParseMaybePlayer(NodeListParser nlp) {
-      return (nlp.IsIdent && nlp.Current.IsPlayer)
-        ? Maybe<PlayerValue>.Create(DefPlayer(nlp.GetIdent()))
-        : Maybe<PlayerValue>.Null;
+    protected OptionValue GetOption(NodeListParser nlp) {
+      if (nlp.IsNumber) return OptionValue.Create(nlp.GetNumber().Value);
+      if (nlp.IsBool) return OptionValue.Create(nlp.GetBool().Value ? 1 : 0);
+      // note that options are case insensitive
+      if (nlp.IsIdent && _optionlookup.ContainsKey(nlp.CurrentIdent.Name.ToLower()))
+        return _optionlookup[nlp.GetIdent().Name.ToLower()];
+      nlp.Expected("number or option keyword");
+      return OptionValue.Default;
     }
   }
 
@@ -142,6 +207,7 @@ namespace Poly.Compiler {
       { typeof(BoolValue), (t,nlp,cb) => nlp.GetBool() },
       { typeof(NumberValue), (t,nlp,cb) => nlp.GetNumber() },
       { typeof(TextValue), (t,nlp,cb) => nlp.GetText() },
+      { typeof(OptionValue), (t,nlp,cb) => cb.GetOption(nlp) },
 
       { typeof(AttributeValue), (t,nlp,cb) => cb.DefAttribute(nlp.GetIdent()) },
       { typeof(DirectionValue), (t,nlp,cb) => cb.DefDirection(nlp.GetIdent()) },
@@ -154,7 +220,7 @@ namespace Poly.Compiler {
 
       { typeof(PositionOrZone), (t,nlp,cb) => cb.ParsePositionOrZone(nlp) },
       { typeof(Maybe<PositionOrZone>), (t,nlp,cb) => cb.ParseMaybePositionOrZone(nlp) },
-      { typeof(PositionOrDirection), (t,nlp,cb) => cb.ParsePositionOrDirection(nlp) },
+      //{ typeof(PositionOrDirection), (t,nlp,cb) => cb.ParsePositionOrDirection(nlp) },
       { typeof(GoKinds), (t,nlp,cb) => cb.ParseGoKind(nlp) },
       { typeof(Maybe<PlayerValue[]>), (t,nlp,cb) => cb.ParseMaybePlayers(nlp) },
       { typeof(Maybe<PlayerValue>), (t,nlp,cb) => cb.ParseMaybePlayer(nlp) },
@@ -192,8 +258,8 @@ namespace Poly.Compiler {
     };
 
     // list of nodes for base game, used to compile variants
-    IList<Node> _game_nodes = null;
-
+    GameIndex _game_index = null;
+    
     //--------------------------------------------------------------------------
     //-- factory
     internal static Compiler Create(string path, Generator generator, SymbolTable symbols) {
@@ -204,61 +270,39 @@ namespace Poly.Compiler {
 
     // main entry point, parses all the variants and returns a list
     internal void CompileMenu(IList<Node> nodes) {
+      Logger.WriteLine(1, "CompileMenu {0} nodes", nodes.Count);
       CompileProg(PredefScopes.MENU, NodeListParser.Create(nodes, Symbols));
     }
 
-    // Compile a scoped prog consisting of a list of callable void functions
-    // also handles embedded values and lists of values using default handlers
+    // Compile top level scoped program block, scoped expression or variant merge
     private void CompileProg(BuiltinScopeInfo info, NodeListParser nlp) {
-      if (info.Kind == PredefKinds.EXPR)
-        CompileExpr(info.Predef, nlp);
-      else if (info.Kind == PredefKinds.PROGM)
-        CompileMerge(info.Predef, nlp);
+      if (info.Kind == PredefKinds.PROGM)
+        CompileGameOrVariant(info.Predef, nlp);
       else if (info.Kind == PredefKinds.PROG)
         CompileProg(info.Predef, nlp);
+      else if (info.Kind == PredefKinds.EXPR)
+        CompileExpr(info.Predef, nlp);
       else throw Error.Assert("{0}", info.Kind);
     }
 
     // Compile and merge nodes from base game and variant
-    internal void CompileMerge(PredefScopes predef, NodeListParser nlp) {
-      Logger.WriteLine(1, "CompileMerge {0} <{1}>", predef, nlp);
+    internal void CompileGameOrVariant(PredefScopes predef, NodeListParser nlp) {
+      Logger.WriteLine(1, "CompileGameOrVariant {0} <{1}>", predef, nlp);
 
       Symbols.PushPredefScope(predef);
-      var nlp2 = nlp;
-      if (_game_nodes == null) {
-        _game_nodes = nlp.Nodes;
+      Symbols.CurrentScope.Push(); // game index will define pieces
+      if (_game_index == null) {
+        _game_index = new GameIndex();
+        _currentparser = NodeListParser.Create(_game_index.IndexGame(nlp), nlp.Symbols);
       } else {
-        var merged = MergeGame(_game_nodes, nlp.GetTail());
-        nlp2 = NodeListParser.Create(merged, nlp.Symbols);
+        _currentparser = NodeListParser.Create(_game_index.MergeVariant(nlp), nlp.Symbols);
       }
-      _currentparser = nlp2;
-      Symbols.CurrentScope.Push();
       var codetype = Symbols.PredefScopeDict[predef].CodeType;
       _gen.EmitEntry(codetype);
-      CompileProg(nlp2);
+      CompileProg(_currentparser);
       _gen.EmitExit(false);
       Symbols.CurrentScope.Pop();
       Symbols.PopPredefScope();
-    }
-
-    // Merge nodes from base game and variant
-    IList<Node> MergeGame(IList<Node> gnodes, IList<Node> vnodes) {
-      // local convenience function
-      Func<Node,string> name = (Node a) => a.AsList[0].AsIdent.Name;
-      // Special rule for conditions: if variant has any, all base conditions are removed
-      HashSet<string> cnames = new HashSet<string> {
-        "win-condition", "loss-condition", "draw-condition"
-      };
-      var hascond = vnodes.Any(v => cnames.Contains(name(v)));
-      var vnames = new HashSet<string>(vnodes.Select(v => name(v)));
-      // for each node, remove all matches, then append new ones
-      var newnodes = new List<Node>(gnodes
-          .Where(n => !vnames.Contains(name(n)))
-          .Where(n => !(hascond && cnames.Contains(name(n))))
-        );
-      newnodes.AddRange(vnodes);
-      Logger.WriteLine(3, "Merge {0} '{1}' '{2}'", hascond, vnames.Join(), newnodes.Select(n => name(n)).Join());
-      return newnodes;
     }
 
     internal void CompileProg(PredefScopes predef, NodeListParser nlp) {
@@ -280,24 +324,24 @@ namespace Poly.Compiler {
       Logger.WriteLine(2, "CompileProg <{0}>", nlp);
       // iterate over the action items in the prog block
       while (!nlp.Done) {
+
+        // value -- special handler
+        if (nlp.IsValue || nlp.IsValueCallable) {
+          if (!CompileHandler("--value", nlp)) nlp.Syntax("bare value not allowed");
+
         // callable function, call it
-        if (nlp.IsCallable) {
+        } else if (nlp.IsCallable) {
           if (nlp.IsFunc && nlp.CurrentIdent.Sym.Keyword == Keywords.ELSE) return; // sneaky!
           var sexpr = nlp.GetSexprNode();
           nlp.Expect(sexpr.DataType == DataTypes.Void, "void function");
           CompileSexpr(sexpr, nlp);
-          // list -- special handler
+
+        // list -- special handler
         } else if (nlp.IsList) {
           var handler = Symbols.Find("--list") as BuiltinSymbol;
           if (handler != null)
             CompileBuiltin(handler, nlp.GetParser());
           else nlp.Unexpected("unknown function");
-          // value -- special handler
-        } else if (nlp.IsValue) {
-          var handler = Symbols.Find("--value") as BuiltinSymbol;
-          if (handler != null)
-            CompileBuiltin(handler, nlp.GetParser());
-          else nlp.Syntax("bare value not allowed");
         } else nlp.Expected("function call");
       }
     }
@@ -343,10 +387,22 @@ namespace Poly.Compiler {
           _gen.EmitLoadValue(null);
         else if (ci.Arguments[i] == typeof(AttributeValue))
           _gen.EmitLoadValue(DefAttribute(nlp.GetIdent())); // special for attribute
+        // TODO: could possibly check for combo of boolean expected and undefined ident, and emit false
         else CompileArg(ci.Arguments[i], nlp);
       }
       nlp.Expect(nlp.Done, "no more arguments for {0}", funcsym.Name);
       _gen.EmitCall(funcsym);
+    }
+
+    // compile a handler for a single value, caller handles errors
+    bool CompileHandler(string name, NodeListParser nlp) {
+      var funcsym = Symbols.Find(name) as BuiltinSymbol;
+      if (funcsym == null) return false;
+      var ci = funcsym.CallInfo;
+      if (ci.NumArgs != 1) throw Error.Assert("arg count");
+      CompileArg(ci.Arguments[0], nlp);
+      _gen.EmitCall(funcsym);
+      return true;
     }
 
     // Compile an argument of given type
@@ -368,7 +424,11 @@ namespace Poly.Compiler {
 
       // handle these separately, could be variable or function
       } else if (type.IsSubclassOf(typeof(TypedValue))) {
+        // TODO: type checking
         CompileValue(type, nlp);
+        //var exptype = TypedValue.DataTypeDict.SafeLookup(type);
+        //var rettype = CompileValue(type, nlp);
+        //nlp.Expect(rettype == exptype, "value of type {0}", exptype);
 
         // direct lookup gets special cases; else continue
       } else if (func != null) {
@@ -401,7 +461,10 @@ namespace Poly.Compiler {
         var info = Symbols.PredefScopeDict.First(kv => kv.Value.CodeType == type).Value;
         CompileProg(info, nlp);
 
-      // function call
+      } else if (type == typeof(PositionOrDirection)) {
+        CompilePositionOrDirection(nlp);
+
+        // function call on built in
       } else if (nlp.IsSexpr) {
         var sexpr = nlp.GetSexprNode();
         var datatype = TypedValue.DataTypeDict.SafeLookup(type);
@@ -412,34 +475,73 @@ namespace Poly.Compiler {
     }
 
     // Compile a literal, symbol or expression that returns a typed value
-    void CompileValue(Type type, NodeListParser nlp) {
+    // Return datatype to caller for type checking
+    DataTypes CompileValue(Type type, NodeListParser nlp) {
       Logger.WriteLine(4, "CompileValue {0} <{1}>", type, nlp);
 
-      var func = _typeactiondict.SafeLookup(type);
       // bracketed expression with arguments
       if (nlp.IsSexpr) {
         var sexpr = nlp.GetSexprNode();
-        var datatype = TypedValue.DataTypeDict.SafeLookup(type);
-        nlp.Expect(sexpr.DataType == datatype, "value of type {0}", datatype);
         CompileSexpr(sexpr, nlp);
-      } else if (nlp.IsFunc) {
+        return sexpr.DataType;
+      }
+      if (nlp.IsFunc) {
         // bare function no arguments
         var sym = nlp.GetIdent().Sym as BuiltinSymbol;
         CompileBuiltin(sym, NodeListParser.Null);
-      } else if (nlp.IsVariable) {
+        return sym.DataType;
+      }
+      if (nlp.IsVariable) {
         var sym = nlp.GetIdent().Sym;
         _gen.EmitLoadVar(sym);
-      } else if (nlp.IsAttribute || (nlp.IsList && nlp.PeekList.IsAttribute)) {
+        return sym.DataType;
+      }
+      if (nlp.IsAttribute || (nlp.IsList && nlp.CheckedHead.IsAttribute)) {
         var handler = Symbols.Find("--attribute") as BuiltinSymbol;
         if (handler != null)
           CompileBuiltin(handler, nlp.GetParser());
         else nlp.Syntax("attribute not allowed here");
-      } else if (func != null) {
+        return handler.DataType;
+      }
+      var func = _typeactiondict.SafeLookup(type);
+      if (func != null) {
         // direct lookup to get constant value
-        var value = func(type, nlp, this);
+        var value = func(type, nlp, this) as TypedValue;
         _gen.EmitLoadValue(value);
-      } else nlp.Unexpected("unknown type {0}", type);
+        return value.DataType;
+      }
+      nlp.Unexpected("unknown type {0}", type);
+      return DataTypes.Unknown;
     }
+
+    //void CompileValue(Type type, NodeListParser nlp) {
+    //  Logger.WriteLine(4, "CompileValue {0} <{1}>", type, nlp);
+
+    //  var func = _typeactiondict.SafeLookup(type);
+    //  // bracketed expression with arguments
+    //  if (nlp.IsSexpr) {
+    //    var sexpr = nlp.GetSexprNode();
+    //    var datatype = TypedValue.DataTypeDict.SafeLookup(type);
+    //    nlp.Expect(sexpr.DataType == datatype, "value of type {0}", datatype);
+    //    CompileSexpr(sexpr, nlp);
+    //  } else if (nlp.IsFunc) {
+    //    // bare function no arguments
+    //    var sym = nlp.GetIdent().Sym as BuiltinSymbol;
+    //    CompileBuiltin(sym, NodeListParser.Null);
+    //  } else if (nlp.IsVariable) {
+    //    var sym = nlp.GetIdent().Sym;
+    //    _gen.EmitLoadVar(sym);
+    //  } else if (nlp.IsAttribute || (nlp.IsList && nlp.PeekList.IsAttribute)) {
+    //    var handler = Symbols.Find("--attribute") as BuiltinSymbol;
+    //    if (handler != null)
+    //      CompileBuiltin(handler, nlp.GetParser());
+    //    else nlp.Syntax("attribute not allowed here");
+    //  } else if (func != null) {
+    //    // direct lookup to get constant value
+    //    var value = func(type, nlp, this);
+    //    _gen.EmitLoadValue(value);
+    //  } else nlp.Unexpected("unknown type {0}", type);
+    //}
 
     //--------------------------------------------------------------------------
     // Compile control constructs that generate GOTOs and emit custom code
@@ -555,13 +657,17 @@ namespace Poly.Compiler {
     }
 
     OccupierDef ParseOccupier(NodeListParser nlp) {
+      //NOTE: this change allows dropping parens, but breaks order dependence
+      //if (nlp.IsIdent && (nlp.CurrentIdent.IsPiece || nlp.CurrentIdent.IsDirection)) {
+
+      // take ident; define as piece if not direction
       if (nlp.IsIdent) {
         var ident = nlp.GetIdent();
         if (ident.IsDirection)      // only used by relative-config
           return OccupierDef.Create(ident.AsValue as DirectionValue);
         else return OccupierDef.Create(PlayerKinds.Friend, DefPiece(ident));
       }
-      // note: relies on dummy functions defined in scope?
+      // note: relies on dummy functions defined in scope
       if (nlp.IsList && nlp.IsCallable) {
         var nlp2 = nlp.GetParser();
         var ident = nlp2.GetIdent();
@@ -580,7 +686,7 @@ namespace Poly.Compiler {
     }
 
     // Precompile dimensions to pick out position identifiers
-    private DimPosDef ParseDimensionPositions(NodeListParser nlpx) {
+    DimPosDef ParseDimensionPositions(NodeListParser nlpx) {
       List<string> _dims = new List<string>();
       for (var nlp = nlpx.Clone(); !nlp.Done; ) {
         var nlp2 = nlp.GetParser();
@@ -605,12 +711,73 @@ namespace Poly.Compiler {
       }
     }
 
-    private PieceImages ParsePieceImages(NodeListParser nlp) {
+    PieceImages ParsePieceImages(NodeListParser nlp) {
       return new PieceImages {
         Player = DefPlayer(nlp.GetIdent()),
         Images=nlp.While(n=>n.IsString, n=>n.GetText()).ToList(),
       };
     }
 
+    PositionOrZone ParsePositionOrZone(NodeListParser nlp) {
+      if (nlp.IsConstant) {
+        var value = nlp.GetValue();
+        if (value is PositionValue || value is ZoneValue)
+          return new PositionOrZone { Value = value };
+        else { }
+      }
+      nlp.Expected("position or zone");
+      return null;
+    }
+
+    Maybe<PositionOrZone> ParseMaybePositionOrZone(NodeListParser nlp) {
+      if (nlp.IsConstant) {
+        var value = nlp.Current.AsValue;
+        if (value is PositionValue || value is ZoneValue)
+          return new Maybe<PositionOrZone> { Value = ParsePositionOrZone(nlp) };
+      }
+      return new Maybe<PositionOrZone> { };
+    }
+
+    // parse a term which may be a position, direction or opposite
+    void CompilePositionOrDirection(NodeListParser nlp) {
+      var rettype = CompileValue(typeof(TypedValue), nlp);
+      nlp.Expect(rettype == DataTypes.Position || rettype == DataTypes.Direction, "position or direction");
+      var funcsym = Symbols.Find("--pos-or-dir");
+      _gen.EmitCall(funcsym as BuiltinSymbol);
+    }
+
+    //protected PositionOrDirection ParsePositionOrDirection(NodeListParser nlp) {
+    //  if (nlp.IsValue) {
+    //    var value = nlp.GetValue();
+    //    if (value is PositionValue || value is DirectionValue)
+    //      return new PositionOrDirection { Value = value };
+    //  }
+    //  nlp.Expected("position or direction");
+    //  return null;
+    //}
+
+    GoKinds ParseGoKind(NodeListParser nlp) {
+      var ident = nlp.GetIdent();
+      var gosym = Symbols.Find(ident.Name, PredefKinds.GO);
+      nlp.Expect(gosym != null, "valid go target");
+      return gosym.GoKind;
+    }
+
+    Maybe<PlayerValue[]> ParseMaybePlayers(NodeListParser nlp) {
+      if (!(nlp.IsList && nlp.CheckedHead.IsPlayer)) return Maybe<PlayerValue[]>.Null;
+      return Maybe<PlayerValue[]>.Create(nlp.GetParser().UntilDone(n => DefPlayer(n.GetIdent())).ToArray());
+    }
+
+    Maybe<PieceValue> ParseMaybePiece(NodeListParser nlp) {
+      return (nlp.IsIdent && nlp.Current.IsPiece)
+        ? Maybe<PieceValue>.Create(DefPiece(nlp.GetIdent()))
+        : Maybe<PieceValue>.Null;
+    }
+
+    Maybe<PlayerValue> ParseMaybePlayer(NodeListParser nlp) {
+      return (nlp.IsIdent && nlp.Current.IsPlayer)
+        ? Maybe<PlayerValue>.Create(DefPlayer(nlp.GetIdent()))
+        : Maybe<PlayerValue>.Null;
+    }
   }
 }

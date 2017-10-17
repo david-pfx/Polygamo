@@ -241,13 +241,15 @@ namespace Polygamo {
   /// Enough to positively identify and display the move, but not enough to execute it
   /// </summary>
   public class PolyMove {
-    public int Index;        // index for base move, used by make move
-    public string Player;    // player on turn
-    public string Position1; // first position
-    public string Piece1;    // (opt) piece left at first position
-    public string Position2; // (opt) second position
-    public string Piece2;    // (opt) piece left at second position
+    public int Index;             // index for base move, used by make move
+    public string Player;         // player on turn
+    public string Position1;      // first position
+    public string Piece1;         // (opt) piece left at first position
+    public string Position2;      // (opt) second position
+    public string Piece2;         // (opt) piece left at second position
+    public bool IsPass = false;   // true if this move is a pass
     private MoveModel _move;
+
 
     public override string ToString() {
       return (Position1 == null) ? String.Format("Move<{0}>", Index)
@@ -255,8 +257,9 @@ namespace Polygamo {
         : String.Format("Move<{0},{1},{2},{3},{4},{5}>", Index, Player, Position1, Piece1, Position2, Piece2);
     }
 
-    public string Format() {
-      return _move.MoveParts.Select(p => p.Format()).Join();
+    public string ToString(string arg) {
+      return (arg == "M" || arg == "P") ? _move.ToString(arg)
+        : ToString();
     }
 
     internal static PolyMove Create(int index, MoveModel move) {
@@ -264,7 +267,7 @@ namespace Polygamo {
         Index = index,
       };
       if (move.IsPass) return new PolyMove {
-        Index = index,
+        Index = index, IsPass = true,
         Player = move.Player.Value,
         Position1 = "", Piece1 = "", Position2 = "", Piece2 = "",
         _move = move,
@@ -346,11 +349,12 @@ namespace Polygamo {
   //////////////////////////////////////////////////////////////////////////////
 
   public class PolyGame {
+    public static string LastError { get; private set; }
     // -- internals
     internal TextReader _input { get; private set; }
     internal MenuModel _menumodel;
     internal GameModel _gamemodel;
-    internal ChoiceManager _chooser { get { return _gamemodel.Chooser; } }
+    internal ChoiceMaker _chooser { get { return _gamemodel.Chooser; } }
     BoardModel _boardmodel { get { return _gamemodel.CurrentBoard; } }
     MenuDef _menudef { get { return _menumodel.Def; } }
     GameDef _gamedef { get { return _gamemodel.Def; } }
@@ -359,8 +363,19 @@ namespace Polygamo {
     IList<string> _images;
     int _variant = 0;
 
-    // create a game from text 
+    // create a game from text, wrapped for all exceptions
     public static PolyGame Create(string path, TextReader reader = null, int variant = 0) {
+      try {
+        return CreateInner(path, reader, variant);
+      } catch (Exception ex) {
+        LastError = ex.Message;
+        return null;
+      }
+    }
+
+    // create a game from text, no wrapper
+    public static PolyGame CreateInner(string path, TextReader reader = null, int variant = 0) {
+      LastError = null;
       return new PolyGame {
         SourcePath = path,
         _input = reader,
@@ -388,6 +403,7 @@ namespace Polygamo {
 
       var parser = Parser.Create();
       var nodes = parser.ParseNodes(_input, Console.Out, SourcePath).ToList();
+      _input.Close();
       if (parser.Error) throw Error.Fatal("compilation terminated");
 
       var generator = Generator.Create();
@@ -445,7 +461,8 @@ namespace Polygamo {
     ///
 
     public string GetOption(string name) {
-      return _gamedef.GetProperty(name).AsString;
+      var value = _gamedef.GetProperty(name);
+      return (value == null) ? null : value.AsString;
     }
     public void SetOption(string name, string value) {
       _gamedef.SetProperty(name, TextValue.Create(value));
@@ -456,11 +473,23 @@ namespace Polygamo {
     public string Title { get { return _gamedef.GetStringProperty("title"); } }
     // enumerate players
     public IList<string> Players {
-      get { return _gamedef.PlayerLookup.Select(p => p.Key.Value).ToList(); }
+      get { return _gamedef.PlayerLookup.Select(p => p.Key.Value)
+          .OrderBy(p=>p)
+          .ToList(); }
     }
     // enumerate active players
     public IList<string> ActivePlayers {
-      get { return _gamedef.PlayerLookup.Where(p => p.Value.IsActive).Select(p => p.Key.Value).ToList(); }
+      get { return _gamedef.PlayerLookup.Where(p => p.Value.IsActive).Select(p => p.Key.Value)
+          .OrderBy(p => p)
+          .ToList(); }
+    }
+    // first player is the first active player to have a turn
+    public string FirstPlayer {
+      get {
+        return _gamedef.TurnOrders
+          .Where(t => _gamedef.PlayerLookup[t.TurnPlayer].IsActive)
+          .First().TurnPlayer.Value;
+      }
     }
     public IList<string> BoardImages { get { return _images; } }
 
@@ -480,12 +509,22 @@ namespace Polygamo {
 
     // list of defined zones
     public IList<PolyZone> Zones {
-      get { return _boarddef.ZoneLookup.Select(z => PolyZone.Create(z.Key.Item1, z.Key.Item2, z.Value)).ToList(); }
+      get {
+        return _boarddef.ZoneLookup
+          .Select(z => PolyZone.Create(z.Key.Item1, z.Key.Item2, z.Value))
+          .OrderBy(z => z.Name)
+          .ToList();
+      }
     }
 
     // list of defined pieces
     public IList<PolyPiece> Pieces {
-      get { return _gamedef.PieceLookup.Select(p => PolyPiece.Create(p.Value)).ToList(); }
+      get {
+        return _gamedef.PieceLookup
+          .Select(p => PolyPiece.Create(p.Value))
+          .OrderBy(p => p.Name)
+          .ToList();
+      }
     }
 
     // game piece images (by player)
@@ -501,8 +540,7 @@ namespace Polygamo {
     public IList<PolyOffStore> OffStores {
       get {
         return _boardmodel.OffStoreLookup
-      .SelectMany(kv => kv.Value
-      .Select(skv => PolyOffStore.Create(kv.Key, skv.Key, skv.Value))).ToList();
+          .Select(kv => PolyOffStore.Create(kv.Key.Item1, kv.Key.Item2, kv.Value)).ToList();
       }
     }
 
@@ -522,17 +560,16 @@ namespace Polygamo {
     }
     // get game result for board and current player
     public ResultKinds GameResult { get { return _boardmodel.Result; } }
+    // get move from chooser, or possibly random
+    public PolyMove ChosenMove { get { return GetLegalMove(_gamemodel.ChosenMove); } }
+    // is pass allowed now?
+    public bool CanPass { get { return LegalMoves.Count > 0 && LegalMoves[0].IsPass; } }
+    // is undo possible now?
+    public bool CanUndo { get { return _gamemodel.CanUndo; } }
 
     // enumerate current played pieces
     public IList<PolyPlayedPiece> PlayedPieces { get { return PolyPlayedPiece.Create(_boardmodel); } }
 
-    // enumerate over allowed move parts (for testing)
-    public IList<PolyMovePart> GetMoveParts(int index) {
-      if (!(index >= 0 && index < LegalMoves.Count)) throw Error.Assert("no such move {0}", index);
-      return _boardmodel.LegalMoves[index].MoveParts
-        .Select((p, x) => PolyMovePart.Create(x, p))
-        .ToList();
-    }
     public IList<PolyMovePart> LegalMoveParts {
       get {
         return _boardmodel.LegalMoves
@@ -549,11 +586,6 @@ namespace Polygamo {
       }
     }
 
-    public PolyMove GetLegalMove(int index) {
-      return (index >= 0 && index < LegalMoves.Count) ? LegalMoves[index]
-        : PolyMove.Create(index, null);
-    }
-
     // enumerate over moves played to this point
     public IList<PolyMove> MovesPlayed {
       get {
@@ -561,18 +593,37 @@ namespace Polygamo {
       }
     }
 
+    // enquiries
+    public PolyMove GetLegalMove(int index) {
+      return (index >= 0 && index < LegalMoves.Count) ? LegalMoves[index]
+        : PolyMove.Create(index, null);
+    }
+
+    // enumerate over allowed move parts (for testing)
+    public IList<PolyMovePart> GetMoveParts(int index) {
+      if (!(index >= 0 && index < LegalMoves.Count)) throw Error.Assert("no such move {0}", index);
+      return _boardmodel.LegalMoves[index].MoveParts
+        .Select((p, x) => PolyMovePart.Create(x, p))
+        .ToList();
+    }
+
     //==========================================================================
     // Change game state by making or unmaking a move
     //
 
-    // start a new game with a particular kind of chooser
-    public void NewBoard(ChooserKinds kind = ChooserKinds.First) {
-      _gamemodel.NewBoard(kind);
+    // start a new game with default chooser and params
+    public void NewBoard() {
+      _gamemodel.NewBoard();
+    }
+
+    // start a new game with chooser and params
+    public void NewBoard(ChooserKinds chooserkind, int stepcount, int maxdepth) {
+      _gamemodel.NewBoard(chooserkind, stepcount, maxdepth);
     }
 
     // make a move
-    public void MakeMove(int index) {
-      _gamemodel.MakeMove(index);
+    public bool MakeMove(int index) {
+      return _gamemodel.MakeMove(index);
     }
 
     public void UndoMove() {
@@ -587,23 +638,21 @@ namespace Polygamo {
       _gamemodel.Restart();
     }
 
-    //==========================================================================
-    // Invoke AI to choose a move
-    //
-
+    // parameters for chooser
+    public int StepCount {
+      get { return _chooser.StepCount; }
+      set { _chooser.StepCount = value; }
+    }
+    public int MaxDepth {
+      get { return _chooser.MaxDepth; }
+      set { _chooser.MaxDepth = value; }
+    }
     public int VisitCount { get { return _chooser.VisitCount; } }
     public double Weight { get { return _chooser.Weight; } }
 
     // update chooser, return true if all done
-    public bool UpdateChooser(int arg = 0) {
-      _chooser.Update(arg);
-      return _chooser.Choice.IsDone;
-    }
-
-    public PolyMove ChosenMove {
-      get {
-        return GetLegalMove(_chooser == null ? 0 : _chooser.Index); 
-      }
+    public bool UpdateChooser() {
+      return _gamemodel.UpdateChooser();
     }
 
     public IEnumerable<PolyChoice> ChoicesIter() {
@@ -637,10 +686,8 @@ namespace Polygamo {
         Console.WriteLine("Position {0}: piece {1}, player {2}", piece.Key, piece.Value.Piece, piece.Value.Player);
 
       Console.WriteLine("\nOff stores");
-      foreach (var player in _boardmodel.OffStoreLookup.Keys) {
-        foreach (var store in _boardmodel.OffStoreLookup[player]) {
-          Console.WriteLine("Player:{0} piece:{1} count:{2}", player, store.Key, store.Value);
-        }
+      foreach (var kv in _boardmodel.OffStoreLookup) {
+        Console.WriteLine("Player:{0} piece:{1} count:{2}", kv.Key.Item1, kv.Key.Item2, kv.Value);
       }
 
       //Logger.Level = 3;
@@ -650,7 +697,7 @@ namespace Polygamo {
       foreach (var move in _boardmodel.LegalMoves) {
         Logger.WriteLine(4, "{0}", move);
         for (int i = 0; i < move.MoveParts.Count; i++) {
-          Console.WriteLine("{0}{1}", (i == 0 ? "  " : "  --"), move.MoveParts[i].Format());
+          Console.WriteLine("{0}{1}", (i == 0 ? "  " : "  --"), move.ToString("P"));
         }
       }
     }

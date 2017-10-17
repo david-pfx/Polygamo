@@ -24,12 +24,12 @@ namespace PolygamoTest {
   [TestClass]
   public class TestChooser {
     static Dictionary<char, Action<PolyGame>> actionlookup = new Dictionary<char, Action<PolyGame>> {
-        { 'I', g=> { g.NewBoard(ChooserKinds.First); g.UpdateChooser(); } },
+        { 'I', g=> { g.NewBoard(ChooserKinds.First, 0, 0); g.UpdateChooser(); } },
         //{ '1', g=> { g.NewBoard(ChooserKinds.Depth); g.UpdateChooser(1); } },
         //{ '2', g=> { g.NewBoard(ChooserKinds.Depth); g.UpdateChooser(2); } },
         //{ 'F',       g=>g.NewBoard(ChooserKinds.Full) },
         //{ 'S', g=> { g.NewBoard(ChooserKinds.Breadth); g.UpdateChooser(2000); } },
-        { 'T', g=> { g.NewBoard(ChooserKinds.Mcts); g.UpdateChooser(2000); } },
+        { 'T', g=> { g.NewBoard(ChooserKinds.Mcts, 2000, 999); g.UpdateChooser(); } },
         { 'M', g=> { g.MakeMove(g.ChosenMove.Index); g.UpdateChooser(); } },
         { '0', g=> { g.MakeMove(0); g.UpdateChooser(); } },
       };
@@ -62,7 +62,7 @@ namespace PolygamoTest {
         //{ "MF",        "O;O,man,C-3" },
       };
       for (int i = 0; i < matrix.GetLength(0); i++) {
-        var game = PolyGame.Create("played", new StringReader(testprog));
+        var game = PolyGame.CreateInner("played", new StringReader(testprog));
         foreach (var ch in matrix[i, 0])
           actionlookup[ch](game);
         //Assert.IsTrue(game.ChoicesIter().First().IsDone, matrix[i, 0]);
@@ -96,7 +96,7 @@ namespace PolygamoTest {
       };
 
       for (int i = 0; i < matrix.GetLength(0); i++) {
-        var game = PolyGame.Create("choice2", new StringReader(testprog));
+        var game = PolyGame.CreateInner("choice2", new StringReader(testprog));
         var result = "";
         foreach (var ch in matrix[i, 0]) {
           if (ch == ';')
@@ -130,7 +130,7 @@ namespace PolygamoTest {
       };
 
       for (int i = 0; i < matrix.GetLength(0); i++) {
-        var game = PolyGame.Create("choice2", new StringReader(testprog));
+        var game = PolyGame.CreateInner("choice2", new StringReader(testprog));
         var result = "";
         foreach (var ch in matrix[i, 0]) {
           if (ch == ';')

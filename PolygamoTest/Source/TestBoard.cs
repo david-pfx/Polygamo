@@ -33,7 +33,7 @@ namespace PolygamoTest {
       var input = new StringReader(
         @"(include ""testincl.poly"")" +
         @"(gameb1)");
-      var game = PolyGame.Create("bt1", input);
+      var game = PolyGame.CreateInner("bt1", input);
       Assert.AreEqual(1, game.Menu.Count());
       Assert.AreEqual("board1", game.Title);
       Assert.AreEqual("board1.png", game.BoardImages[0]);
@@ -54,7 +54,7 @@ namespace PolygamoTest {
         @"(include ""testincl.poly"")" +
         @"(game (gamestub1)" +
         @"(board (boardlink1)) )");
-      var game = PolyGame.Create("bt2", input);
+      var game = PolyGame.CreateInner("bt2", input);
       Assert.AreEqual(1, game.Menu.Count());
       Assert.AreEqual("stub1", game.Title);
       Assert.AreEqual("board1.png", game.BoardImages[0]);
@@ -80,6 +80,44 @@ namespace PolygamoTest {
     }
 
     [TestMethod]
+    public void BoardLink2() {
+      Logger.Open(1);
+      var template =
+        @"(include ""testincl.poly"")" +
+        @"(game (gamestub1)" +
+        @" (board" +
+        @"  (grid (start-rectangle 16 16 112 112)" +
+        @"   (dimensions (""A-/B-/C-"" (0 112)) (""1/2/3""(112 0)) ) )" +
+        @" (links ee (A-2 A-1) (B-2 B-1))" +
+        @" (links ff (A-1 A-2) (B-1 B-2))" +
+        @" {0} ))";
+
+      var matrix = new string[,] {
+        { "",                         "ee,A-2,A-1; ee,B-2,B-1; ff,A-1,A-2; ff,B-1,B-2" },
+        { "(links gg (A-1 A-2))",     "ee,A-2,A-1; ee,B-2,B-1; ff,A-1,A-2; ff,B-1,B-2; gg,A-1,A-2" },
+        { "(unlink A-1)",             "ee,B-2,B-1; ff,B-1,B-2" },
+        { "(unlink A-1 A-2 C-3)",     "ee,B-2,B-1; ff,B-1,B-2" },
+        { "(unlink A-1 A-2 B-1 B-2)", "" },
+        { "(unlink (A-1 A-2))",       "ee,B-2,B-1; ff,B-1,B-2" },
+        { "(unlink (A-1 ff))",        "ee,A-2,A-1; ee,B-2,B-1; ff,B-1,B-2" },
+
+        { "(kill-positions A-2)",     "ee,B-2,B-1; ff,B-1,B-2" },
+        { "(kill-positions B-1 A-2 C-3)", "" },
+      };
+      for (int i = 0; i < matrix.GetLength(0); i++) {
+        var testprog = string.Format(template, matrix[i, 0]);
+        var game = PolyGame.CreateInner("played", new StringReader(testprog));
+        foreach (var ch in matrix[i, 0]) {
+          var result = game.Links
+            .Select(l => Util.Join(",", l.Direction, l.From, l.To))
+            .OrderBy(s => s)
+            .Join("; ");
+          Assert.AreEqual(matrix[i, 1], result, matrix[i, 0]);
+        }
+      }
+    }
+
+    [TestMethod]
     public void BoardGridPositions() {
       Logger.Open(1);
       var input = new StringReader(
@@ -87,7 +125,7 @@ namespace PolygamoTest {
         @"(game (gamestub1)" +
         @"(board (boardgrid45)) )"
       );
-      var game = PolyGame.Create("bgp", input);
+      var game = PolyGame.CreateInner("bgp", input);
 
       for(int i = 0; i < game.Positions.Count; ++i) {
         Assert.AreEqual(String.Format("{0}-{1}", "ABCD"[i / 5], "12345"[i % 5]), game.Positions[i].Name, "name");
@@ -103,7 +141,7 @@ namespace PolygamoTest {
         @"(include ""testincl.poly"")" +
         @"(game (gamestub1)" +
         @"(board (boardgrid45)) )");
-      var game = PolyGame.Create("bt2", input);
+      var game = PolyGame.CreateInner("bt2", input);
       Assert.AreEqual(1, game.Menu.Count());
       Assert.AreEqual("stub1", game.Title);
       Assert.AreEqual("board45a.png", game.BoardImages[0]);
@@ -122,7 +160,7 @@ namespace PolygamoTest {
         @"(game (gamestub1)" +
         @"(board (boardgrid45))"+
         @"(piece (piece1)) )");
-      var game = PolyGame.Create("bt2", input);
+      var game = PolyGame.CreateInner("bt2", input);
 
       var piece_exp = new string[] {
         "man;M;man desc;man help;False"
@@ -159,7 +197,7 @@ namespace PolygamoTest {
         @"(piece (piece2))" +
         @"(piece (piece3))" +
         @")");
-      var game = PolyGame.Create("bt2", input);
+      var game = PolyGame.CreateInner("bt2", input);
 
       var piece_exp = new string[] {
         "man;M;man desc;man help;False",
@@ -193,7 +231,7 @@ namespace PolygamoTest {
         @" (piece (piece1))" +
         @" (board-setup (X (man A-1 B-1 off 5 C-1)))" +
         @")");
-      var game = PolyGame.Create("bs1", input);
+      var game = PolyGame.CreateInner("bs1", input);
 
       var ppexpect = "X,man,A-1,MANX.png;X,man,B-1,MANX.png;X,man,C-1,MANX.png";
       var ppactual = game.PlayedPieces
@@ -215,7 +253,7 @@ namespace PolygamoTest {
         @"(board (boardgrid33))" +
         @"(piece (piece1))" +
         @"(board-setup (setup2)) )");
-      var game = PolyGame.Create("bs1", input);
+      var game = PolyGame.CreateInner("bs1", input);
 
       var ppexpect = "X,man,A-1,MANX.png;X,man,B-1,MANX.png;X,man,C-1,MANX.png;O,man,C-2,MANO.png";
       var ppactual = game.PlayedPieces

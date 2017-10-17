@@ -37,7 +37,7 @@ namespace PolygamoTest {
         @" (piece (piecedrops1))" +
         @" (board-setup (X(man A-1 B-1 off 5 C-1)) )" +
         @")");
-      var game = PolyGame.Create("bs1", input);
+      var game = PolyGame.CreateInner("bs1", input);
 
       var expstring = "Drop,X,man,A-1;Drop,X,man,A-2;Drop,X,man,A-3;Drop,X,man,B-1;Drop,X,man,B-2;Drop,X,man,B-3";
       var actstring = game.LegalMoveParts
@@ -91,11 +91,13 @@ namespace PolygamoTest {
 
         // flags
         { "((set-flag          flg (position? B-4)) (if (flag?           flg) w add))", "B-3" },
+        { "((set-flag          A-1 (position? B-4)) (if (flag?           A-1) w add))", "B-3" }, // clash?
         { "((set-flag          flg (position? B-4)) w (if (flag?         flg)   add))", "B-3" },
         { "((set-flag          flg (not-position? B-4)) (if (not-flag?   flg) w add))", "B-3" },
         { "((set-flag          flg (not-position? B-4)) w (if (not-flag? flg)   add))", "B-3" },
 
         { "((set-position-flag flg (position? B-4))   (if (position-flag? flg)   w add))", "B-3" },
+        { "((set-position-flag A-1 (position? B-4))   (if (position-flag? A-1)   w add))", "B-3" }, // clash?
         { "((set-position-flag flg (position? B-4)) w (if (position-flag? flg e)   add))", "B-3" },
         { "((set-position-flag flg true B-4       )   (if (position-flag? flg)   w add))", "B-3" },
         { "((set-position-flag flg true B-4       )   (if (position-flag? flg e)   add))", "B-3" },
@@ -106,7 +108,7 @@ namespace PolygamoTest {
       };
       for (int i = 0; i < matrix.GetLength(0); i++) {
         var tp = String.Format(testprog, matrix[i, 0]);
-        var game = PolyGame.Create("bs1", new StringReader(tp));
+        var game = PolyGame.CreateInner("bs1", new StringReader(tp));
 
         Assert.IsTrue(game.LegalMoveParts.All(m => m.Kind == MoveKinds.Drop));
         Assert.IsTrue(game.LegalMoveParts.All(m => m.Piece == "xx"));
@@ -158,7 +160,7 @@ namespace PolygamoTest {
       };
       for (int i = 0; i < matrix.GetLength(0); i++) {
         var tp = String.Format(testprog, matrix[i, 0]);
-        var game = PolyGame.Create("bs1", new StringReader(tp));
+        var game = PolyGame.CreateInner("bs1", new StringReader(tp));
 
         Assert.IsTrue(game.LegalMoveParts.All(m => m.Kind == MoveKinds.Drop));
         Assert.IsTrue(game.LegalMoveParts.All(m => m.Piece == "xx"));
@@ -182,27 +184,36 @@ namespace PolygamoTest {
         @")";
 
       var matrix = new string[,] {
-        { "(B-4 add)  ", "B-4" },
-        { "(B-4 s add)", "C-4" },
-        { "(endz add) ", "D-1 D-2 D-3 D-4 D-5" },
+        { "(B-4 add)",          "B-4" },
+        { "(B-4 add e add)",    "B-4,B-5" },
+        { "(B-4 add B-5 add)",  "B-4,B-5" },
+        { "(B-4 add e e add)",  "B-4" },
+        { "(B-4 s add)",        "C-4" },
+        { "(B-4 C-4 add)",      "C-4" },
+
+        { "(B-2 add e e (opposite e) add)", "B-2,B-3" },
+        { "(B-2 add e (opposite n) add)",   "B-2,C-3" },
+
+        { "(endz add)",        "D-1,D-2,D-3,D-4,D-5" },
+        { "(endz e add)",      "D-2,D-3,D-4,D-5" },
       };
       for (int i = 0; i < matrix.GetLength(0); i++) {
         var tp = String.Format(testprog, matrix[i, 0]);
-        var game = PolyGame.Create("dporz", new StringReader(tp));
+        var game = PolyGame.CreateInner("dporz", new StringReader(tp));
 
         Assert.IsTrue(game.LegalMoveParts.All(m => m.Kind == MoveKinds.Drop));
         Assert.IsTrue(game.LegalMoveParts.All(m => m.Piece == "xx"));
         Assert.IsTrue(game.LegalMoveParts.All(m => m.Player == "X"));
-        var movestring = game.LegalMoveParts.Select(m => m.Position).OrderBy(m => m).Join(" ");
+        var movestring = game.LegalMoveParts.Select(m => m.Position).OrderBy(m => m).Join(",");
         Assert.AreEqual(matrix[i, 1], movestring, matrix[i, 0]);
       }
     }
 
     /// <summary>
-    /// Test move cursor manipulation: goto, mark, directions, etc
+    /// Test move state cursor manipulation: goto, mark, directions, etc
     /// </summary>
     [TestMethod]
-    public void MovePosition() {
+    public void MoveSetState() {
       Logger.Open(1);
       var testprog =
         @"(include ""testincl.poly"")" +
@@ -229,12 +240,14 @@ namespace PolygamoTest {
         { "(n from to s add)              ", "" },
         // to
         { "(e to e e add)                 ", "Move,man,X,C-1,C-2" },
+        { "((go to) e add)                ", "Move,man,X,C-1,C-2" },  // to not set defaults to current
+        { "(e (go to) add)                ", "Move,man,X,C-1,C-2" },  // to not set defaults to current
         { "(e to n (go to) add)           ", "Move,man,X,C-1,C-2" },
         { "(e e to n (go to) w to add)    ", "Move,man,X,C-1,C-2" },
       };
       for (int i = 0; i < matrix.GetLength(0); i++) {
         var tp = String.Format(testprog, matrix[i, 0]);
-        var game = PolyGame.Create("dporz", new StringReader(tp));
+        var game = PolyGame.CreateInner("dporz", new StringReader(tp));
 
         var movestring = game.LegalMoveParts
           .Select(m => Util.Join(",", m.Kind, m.Piece, m.Player, m.Position, m.Final ?? "")).Join(";");
@@ -286,7 +299,7 @@ namespace PolygamoTest {
       };
       for (int i = 0; i < matrix.GetLength(0); i++) {
         var tp = String.Format(testprog, matrix[i, 0]);
-        var game = PolyGame.Create("movadd", new StringReader(tp));
+        var game = PolyGame.CreateInner("movadd", new StringReader(tp));
 
         var result = game.LegalMoveParts
           .Select(m => Util.Join(",", m.Kind, m.Piece, m.Player, m.Position, m.Final ?? "")).Join(";");
@@ -335,7 +348,7 @@ namespace PolygamoTest {
       };
       for (int i = 0; i < matrix.GetLength(0); i++) {
         var tp = String.Format(testprog, matrix[i, 0]);
-        var game = PolyGame.Create("movadd", new StringReader(tp));
+        var game = PolyGame.CreateInner("movadd", new StringReader(tp));
 
         var result = game.LegalMoveParts
           .Select(m => Util.Join(",", m.Kind, m.Piece, m.Player, m.Position, m.Final ?? "")).Join(";");
@@ -378,7 +391,7 @@ namespace PolygamoTest {
       };
       for (int i = 0; i < matrix.GetLength(0); i++) {
         var tp = String.Format(testprog, matrix[i, 0]);
-        var game = PolyGame.Create("movadd", new StringReader(tp));
+        var game = PolyGame.CreateInner("movadd", new StringReader(tp));
 
         var result = game.LegalMoveParts
           .Select(m => Util.Join(",", m.Kind, m.Piece, m.Player, m.Position, m.Final, 
@@ -406,7 +419,7 @@ namespace PolygamoTest {
       };
       for (int i = 0; i < matrix.GetLength(0); i++) {
         var tp = String.Format(testprog, matrix[i, 0]);
-        var game = PolyGame.Create("movto", new StringReader(tp));
+        var game = PolyGame.CreateInner("movto", new StringReader(tp));
 
         Assert.IsTrue(game.LegalMoveParts.All(m => m.Kind == MoveKinds.Drop));
         Assert.IsTrue(game.LegalMoveParts.All(m => m.Piece == "man"));
