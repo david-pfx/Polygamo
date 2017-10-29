@@ -98,7 +98,7 @@ namespace Poly.Engine {
     // chosen move, or random
     internal int ChosenMove {
       get {
-        return (Def.PlayerLookup[CurrentBoard.TurnPlayer].IsRandom) ? Rng.Next(CurrentBoard.LegalMoves.Count)
+        return (Def.PlayerLookup[CurrentBoard.TurnPlayer].IsRandom) ? CurrentBoard.GetRandomMove()
           : (Chooser == null || Chooser.Index < 0) ? 0 : Chooser.Index;
       }
     }
@@ -241,11 +241,6 @@ namespace Poly.Engine {
   internal class BoardModel {
     // board definition for static info
     internal BoardDef Def { get; private set; }
-    // piece stores off board by player
-    internal Dictionary<Pair<PlayerValue,PieceValue>, int> OffStoreLookup { get { return _offstores; } }
-    //internal Dictionary<PlayerValue, Dictionary<PieceValue, int>> OffStoreLookup { get { return _offstores; } }
-    // lookup on positions occupied
-    internal Dictionary<PositionValue, PieceModel> PlayedPieceLookup { get { return _playedpieces; } }
     // generated drops and moves for player if no result yet
     internal List<MoveModel> LegalMoves { get; private set; }
     // the previous board
@@ -258,11 +253,15 @@ namespace Poly.Engine {
     // current player for friend/enemy and for result
     // volatile, but will match turn player if no result and available moves
     internal PlayerValue CurrentPlayer { get; private set; }
+
+    // piece stores off board by player
+    internal Dictionary<Pair<PlayerValue, PieceValue>, int> OffStoreLookup { get { return _offstores; } }
+    // lookup on positions occupied
+    internal Dictionary<PositionValue, PieceModel> PlayedPieceLookup { get { return _playedpieces; } }
     // game result for this board and result player, or none
     internal ResultKinds Result { get { return _result; } }
     // result player, if result
     internal PlayerValue ResultPlayer { get { return _resultplayer; } }
-
     // current turn in turn order (shows next player)
     internal TurnDef Turn { get { return _gamedef.GetTurn(_turnindex); } }
 
@@ -274,23 +273,22 @@ namespace Poly.Engine {
     internal PlayerValue TurnPlayer { get { return Turn.TurnPlayer; } }
     internal PlayerValue MovePlayer { get { return Turn.MovePlayer; } }
 
-    // set result, and remember current player if win or loss
-    void SetMoveResult(ResultKinds result) {
-      if (result == ResultKinds.Count) {
-        // count means that player with highest count wins
-        var ap = _gamedef.ActivePlayers.ToArray();
-        if (ap.Length != 2) throw Error.Assert("player count");
-        var counts = ap.Select(p => PiecesCount(p)).ToArray();
-        _result = (counts[0] == counts[1]) ? ResultKinds.Draw : ResultKinds.Win;
-        _resultplayer = (_result == ResultKinds.Draw) ? PlayerValue.None : (counts[0] > counts[1]) ? ap[0] : ap[1];
-      } else {
-        _result = result;
-        _resultplayer = (result == ResultKinds.None || result == ResultKinds.Draw) ? PlayerValue.None : CurrentPlayer;
-      }
-      // credit non-active result to previous active player; or else to current
-      if (_resultplayer == LastMovePlayer) _resultplayer = LastTurnPlayer;
-      else if (_resultplayer == MovePlayer) _resultplayer = TurnPlayer;
-    }
+    internal PositionValue LastTo { get { return LastMove == null ? null : LastMove.LastTo; } }
+    internal PositionValue LastFrom { get { return LastMove == null ? null : LastMove.LastFrom; } }
+
+    //--- locals
+    GameModel _game;
+    GameDef _gamedef { get { return _game.Def; } }
+    int _turnindex = 0;
+    Dictionary<PositionValue, PieceModel> _playedpieces = new Dictionary<PositionValue, PieceModel>();
+    Dictionary<Pair<PlayerValue, PieceValue>, int> _offstores = new Dictionary<Pair<PlayerValue, PieceValue>, int>();
+    // pieces captured on last move
+    HashSet<PieceValue> _captured = new HashSet<PieceValue>();
+    // move generation done
+    bool _donemovegen = false;
+    ResultKinds _result = ResultKinds.None;
+    PlayerValue _resultplayer = PlayerValue.None;
+    int _randommove = -1;
 
     // Result as seen by player of last move
     internal ResultKinds MoveResult {
@@ -309,23 +307,43 @@ namespace Poly.Engine {
       }
     }
 
-    //--- locals
-    GameModel _game;
-    GameDef _gamedef { get { return _game.Def; } }
-    int _turnindex = 0;
-    Dictionary<PositionValue, PieceModel> _playedpieces = new Dictionary<PositionValue, PieceModel>();
-    Dictionary<Pair<PlayerValue,PieceValue>, int> _offstores = new Dictionary<Pair<PlayerValue, PieceValue>, int>();
-    // pieces captured on last move
-    HashSet<PieceValue> _captured = new HashSet<PieceValue>();
-    // move generation done
-    bool _donemovegen = false;
-
     internal int NextRandom(int range) {
       return _game.Rng.Next(range);
     }
 
-    ResultKinds _result = ResultKinds.None;
-    PlayerValue _resultplayer = PlayerValue.None;
+    // Pick a random move, and the same again every time if asked
+    internal int GetRandomMove() {
+      if (_randommove == -1) _randommove = NextRandom(LegalMoves.Count);
+      return _randommove;
+    }
+
+    internal int OffStoreCount(PlayerValue player, PieceValue piece) {
+      var pair = Pair.Create(player, piece);
+      return OffStoreLookup.SafeLookup(pair);   // conveniently zero if not found
+    }
+
+    internal void IncOffStore(PlayerValue player, PieceValue piece, int increment) {
+      var pair = Pair.Create(player, piece);
+      OffStoreLookup[pair] += increment;
+    }
+
+    // set result, and remember current player if win or loss
+    void SetMoveResult(ResultKinds result) {
+      if (result == ResultKinds.Count) {
+        // count means that player with highest count wins
+        var ap = _gamedef.ActivePlayers.ToArray();
+        if (ap.Length != 2) throw Error.Assert("player count");
+        var counts = ap.Select(p => PiecesCount(p)).ToArray();
+        _result = (counts[0] == counts[1]) ? ResultKinds.Draw : ResultKinds.Win;
+        _resultplayer = (_result == ResultKinds.Draw) ? PlayerValue.None : (counts[0] > counts[1]) ? ap[0] : ap[1];
+      } else {
+        _result = result;
+        _resultplayer = (result == ResultKinds.None || result == ResultKinds.Draw) ? PlayerValue.None : CurrentPlayer;
+      }
+      // credit non-active result to previous active player; or else to current
+      if (_resultplayer == LastMovePlayer) _resultplayer = LastTurnPlayer;
+      else if (_resultplayer == MovePlayer) _resultplayer = TurnPlayer;
+    }
 
     public override string ToString() {
       return String.Format("Board<{0},{1},{2}:({3})>", _game.MoveNumber, CurrentPlayer, Result, 
@@ -511,6 +529,7 @@ namespace Poly.Engine {
         case MoveKinds.Drop:
           CheckCapture(m.Position);
           _playedpieces[m.Position] = _game.CreatePiece(m.Player, m.Piece);
+          IncOffStore(m.Player, m.Piece, -1);
           break;
         case MoveKinds.Copy:
           CheckCapture(m.Final);
@@ -576,8 +595,7 @@ namespace Poly.Engine {
       return this;
     }
 
-    internal PlayerValue NextOwner(PositionValue pos) {
-      var player = PlayedPieceLookup[pos].Player;
+    internal PlayerValue NextOwner(PlayerValue player) {
       var found = false;
       foreach (var p in _gamedef.ActivePlayers) {
         if (found) return p;
@@ -665,6 +683,22 @@ namespace Poly.Engine {
     internal List<MovePartModel> MoveParts = new List<MovePartModel>();
 
     internal bool IsPass { get { return MoveParts.Count == 0; } }
+    internal MoveKinds Kind { get { return IsPass ? MoveKinds.None : MoveParts[0].Kind; } }
+    public PositionValue LastFrom {
+      get {
+        return IsPass ? null
+          : (MoveParts[0].Kind == MoveKinds.Move) ? MoveParts[0].Position 
+          : null;
+      }
+    }
+    public PositionValue LastTo {
+      get {
+        return IsPass ? null
+          : (MoveParts[0].Kind == MoveKinds.Move) ? MoveParts[0].Final
+          : (MoveParts[0].Kind == MoveKinds.Drop) ? MoveParts[0].Position 
+          : null;
+      }
+    }
 
     public override string ToString() {
       return String.Format("({0},{1},{2})", Player, Position, Piece);
@@ -750,8 +784,6 @@ namespace Poly.Engine {
   /// State used by move generation steps to build a move and its parts
   /// </summary>
   internal class MoveGenState {
-    internal PlayerValue TurnPlayer;  // player owning move (TurnDef.Player)
-    internal PlayerValue Player;      // player doing move (TurnDef.AsPlayer)
     internal PieceValue Piece;
     internal MoveKinds Kind;
     internal PositionValue Position;
@@ -759,12 +791,16 @@ namespace Poly.Engine {
     internal PositionValue To;        // to position for move, if null use current
     internal PositionValue Current;   // temporary current during generation logic
     internal PositionValue Mark;      // temporary store during generation logic
-    internal PositionValue LastFrom;  // previous From
-    internal PositionValue LastTo;    // previous To
     internal List<MoveModel> MoveList = new List<MoveModel>();
-    internal bool Partial { get { return _move.Partial; } set { _move.Partial = value; } }
 
-    internal MoveModel _move;         // base move contains original starting values
+    internal bool Partial { get { return _move.Partial; } set { _move.Partial = value; } }
+    internal PlayerValue TurnPlayer { get { return _board.TurnPlayer; } }
+    internal PlayerValue Player { get { return _board.MovePlayer; } }
+    internal PositionValue LastFrom { get { return _board.LastFrom; } }
+    internal PositionValue LastTo { get { return _board.LastTo; } }
+
+    BoardModel _board;        // move will be for this board
+    MoveModel _move;          // base move contains original starting values
     List<MovePartModel> _changes = new List<MovePartModel>();
     List<MovePartModel> _captures = new List<MovePartModel>();
     HashSet<Pair<PositionValue, IdentValue>> _position_flag_set = new HashSet<Pair<PositionValue, IdentValue>>();
@@ -774,20 +810,16 @@ namespace Poly.Engine {
       return String.Format("State[{0},{1},{2}->{3} @{4} #{5}]", Piece, Kind, From, To, Current, Mark);
     }
 
-    internal static MoveGenState Create(MoveKinds kind, PlayerValue turnplayer, PlayerValue asplayer, PieceValue piece, PositionValue position) {
+    internal static MoveGenState Create(MoveKinds kind, PieceValue piece, PositionValue position, BoardModel board) {
+      //internal static MoveGenState Create(MoveKinds kind, PlayerValue turnplayer, PlayerValue asplayer, PieceValue piece, PositionValue position) {
       return new MoveGenState {
-        Kind = kind, Position = position,
-        TurnPlayer = turnplayer, Player = asplayer, Piece = piece,
-        //Kind = kind, TurnPlayer = turnplayer, Player = asplayer, Piece = piece,
-        //Position = position, From = position, To = position,
+        _board = board, Kind = kind, Position = position, Piece = piece,
         Current = position, Mark = position,
       }.Reset();
     }
 
     // reset after Add
     MoveGenState Reset() {
-      LastFrom = From;
-      LastTo = To ?? Current;
       From = Position;
       To = null;
       _move = MoveModel.Create(TurnPlayer, Position, Piece);
@@ -837,10 +869,13 @@ namespace Poly.Engine {
     void AddPieceMove(PieceValue piece) {
       Logger.WriteLine(4, "Add moves piece:{0} position:{1} from:{2} changes:{3} captures:{4}",
         piece, To ?? Current, From, _changes.Count, _captures.Count);
-      AddMovePart(CreateMovePart(piece));
-      foreach (var movepart in _changes) AddMovePart(movepart);
-      foreach (var movepart in _captures) AddMovePart(movepart);
-      MoveList.Add(_move);
+      var basemovepart = CreateMovePart(piece);
+      if (!(basemovepart.Kind == MoveKinds.Drop && _board.OffStoreCount(basemovepart.Player, basemovepart.Piece) <= 0)) {
+        AddMovePart(basemovepart);
+        foreach (var movepart in _changes) AddMovePart(movepart);
+        foreach (var movepart in _captures) AddMovePart(movepart);
+        MoveList.Add(_move);
+      }
       Reset();
     }
 

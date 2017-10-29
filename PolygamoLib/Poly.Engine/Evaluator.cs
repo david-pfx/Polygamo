@@ -65,7 +65,7 @@ namespace Poly.Engine {
 
     // Entry point from with instance
     internal object Exec(CodeBase instance) {
-      Logger.WriteLine(5, "Exec {0}", instance);
+      Logger.WriteLine(4, "Exec {0}", instance);
 
       var scope = new EvaluationScope { Parent = this };
       try {
@@ -159,8 +159,8 @@ namespace Poly.Engine {
 
     // Evaluation engine for gencode
     internal void Run(CodeBase instance) {
-      _logging = Logger.Level >= 5;
-      if (_logging) Logger.WriteLine(4, "Run {0}", instance);
+      _logging = Logger.Level >= 4;
+      if (_logging) Logger.WriteLine(4, "Run {0} stack={1}", instance, _stack.Count);
 
       var gencode = instance.Code;
       StringWriter sw = new StringWriter();
@@ -250,6 +250,7 @@ namespace Poly.Engine {
         if (_logging) Logger.WriteLine(4, sw.ToString());
         if (_logging) sw.GetStringBuilder().Length = 0;
       }
+      if (_logging) Logger.WriteLine(4, "[Run stack={0} ret={1}]", _stack.Count, ReturnValue);
     }
   }
 }

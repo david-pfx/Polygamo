@@ -220,7 +220,7 @@ namespace PolygamoTest {
         @"(game (gamestub1)" +
         @" (board (boardgrid33))" +
         @" (piece (name man) (drops ((verify empty?) add)))" +
-        @" (board-setup (X (man A-1 A-2 A-3)) (O (man B-1 B-2 B-3)) )" +
+        @" (board-setup (X (man off 2 A-1 A-2 A-3)) (O (man off 1 B-1 B-2 B-3)) )" +
         @"({0})" +
         @")";
       var matrix = new string[,] {
@@ -321,7 +321,7 @@ namespace PolygamoTest {
         @"(game (title ""cpl"") (players X O N) (turn-order (X N) (O N))" +
         @" (board (boardgrid33))" +
         @" (piece (name man) (drops ((verify empty?) add)))" +
-        @" (board-setup (N (man A-1 A-2 A-3)) )" +
+        @" (board-setup (N (man off 2 A-1 A-2 A-3)) )" +
         @"({0})" +
         @")";
       var matrix = new string[,] {

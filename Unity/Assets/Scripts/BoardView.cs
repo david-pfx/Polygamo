@@ -49,7 +49,7 @@ public class BoardView : MonoBehaviour {
     }
   }
 
-  // Coroutine to fade away
+  // Coroutine to fade away, then destroy self
   internal IEnumerator FadeOut(float slideoffset) {
     yield return null;
     _tileholder.position = new Vector3(0, 0, 0);
@@ -59,6 +59,7 @@ public class BoardView : MonoBehaviour {
       _tileholder.Translate(motion);
       yield return null;
     }
+    Destroy(gameObject);
   }
 
   // Coroutine to fade in

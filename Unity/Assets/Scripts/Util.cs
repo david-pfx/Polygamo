@@ -112,7 +112,7 @@ namespace PolygamoUnity {
     public static byte[] LoadBinary(string folder, string filename) {
       var path = Path.Combine(folder, filename);
       if (!File.Exists(path)) return null;
-      using (var fs = new FileStream(path, FileMode.Open)) {
+      using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read)) {
         var buf = new byte[fs.Length];
         fs.Read(buf, 0, (int)fs.Length);
         return buf;

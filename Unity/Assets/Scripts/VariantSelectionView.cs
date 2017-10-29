@@ -133,7 +133,7 @@ public class VariantSelectionView : MonoBehaviour {
   void SelectAction(int index) {
     Util.Trace(2, "Click! {0}", index);
     if (SelectMode == SelectModes.Variant)
-      _game.LoadGame(index);
+      StatusbarText.text = (_game.LoadGame(index)) ? "OK" : GameBoardModel.LastError;
     else {
       StatusbarText.text = "Loading...";
       StartCoroutine(LoadScript(_game.Items.ScriptList[index]));

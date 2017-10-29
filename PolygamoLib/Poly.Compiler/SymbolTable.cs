@@ -71,6 +71,7 @@ namespace Poly.Compiler {
     GRID,
     MENU,
     MOVE,
+    DROP,
     OCCUPIER,
     PIECE,
     ZONE,
@@ -319,6 +320,7 @@ namespace Poly.Compiler {
       AddBuiltinMethods(PredefScopes.GRID,  typeof(GridCode),  typeof(GridDef), PredefKinds.PROG);
       AddBuiltinMethods(PredefScopes.MENU , typeof(MenuCode),  typeof(MenuDef), PredefKinds.PROG);
       AddBuiltinMethods(PredefScopes.MOVE , typeof(MoveCode),  typeof(MoveDef), PredefKinds.PROG);
+      AddBuiltinMethods(PredefScopes.DROP, typeof(DropCode),  typeof(MoveDef), PredefKinds.PROG);
       AddBuiltinMethods(PredefScopes.OCCUPIER, typeof(OccupierCode),  typeof(OccupierDef), PredefKinds.PROG);
       AddBuiltinMethods(PredefScopes.PIECE, typeof(PieceCode), typeof(PieceDef), PredefKinds.PROG);
       AddBuiltinMethods(PredefScopes.GEN, typeof(MoveGenCode), typeof(MoveGenState), PredefKinds.PROG);

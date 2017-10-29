@@ -57,7 +57,7 @@ namespace PolygamoTest {
         @"(board (boardgrid45))" +
         @"(piece (piece1))" +
         @"(piece (piece2))" +
-        @"(board-setup (X (man C-1)) (O (man A-3)) (N (chip D-1)) )" +
+        @"(board-setup (X (man C-1) (xx off 1)) (O (man A-3)) (N (chip D-1)) )" +
         @"(piece (name xx) (drops {0}))" +
         @")";
 
@@ -131,7 +131,7 @@ namespace PolygamoTest {
         @"(board (boardgrid45))" +
         @"(piece (piece1))" +
         @"(piece (piece2))" +
-        @"(board-setup (X (man C-1)) (O (man A-3)) (N (chip D-1)) )" +
+        @"(board-setup (X (man C-1) (xx off 1)) (O (man A-3) (xx off 1)) (N (chip D-1) (xx off 1)) )" +
         @"(piece (name xx) (drops {0}))" +
         @")";
 
@@ -179,23 +179,27 @@ namespace PolygamoTest {
         @"(board (boardgrid45))" +
         @"(piece (piece1))" +
         @"(piece (piece2))" +
-        @"(board-setup (X (man C-1)) (O (man A-3)) (N (chip D-1)) )" +
+        @"(board-setup (X (man C-1) (xx off 1)) (O (man A-3)) (N (chip D-1)) )" +
         @"(piece (name xx) (drops {0}))" +
         @")";
 
       var matrix = new string[,] {
-        { "(B-4 add)",          "B-4" },
-        { "(B-4 add e add)",    "B-4,B-5" },
-        { "(B-4 add B-5 add)",  "B-4,B-5" },
-        { "(B-4 add e e add)",  "B-4" },
-        { "(B-4 s add)",        "C-4" },
-        { "(B-4 C-4 add)",      "C-4" },
+        { "(B-4 add)",                "B-4" },
+        { "(B-4 add e add)",          "B-4,B-5" },
+        { "(B-4 add B-5 add)",        "B-4,B-5" },
+        { "(B-4 add e e add)",        "B-4" },
+        { "(B-4 s add)",              "C-4" },
+        { "(B-4 C-4 add)",            "C-4" },
+        { "(B-4 add)(C-4 add)",       "B-4,C-4" },
+        { "(C-4 add)(B-4 add)",       "B-4,C-4" },
 
         { "(B-2 add e e (opposite e) add)", "B-2,B-3" },
         { "(B-2 add e (opposite n) add)",   "B-2,C-3" },
 
-        { "(endz add)",        "D-1,D-2,D-3,D-4,D-5" },
-        { "(endz e add)",      "D-2,D-3,D-4,D-5" },
+        { "(endz add)",               "D-1,D-2,D-3,D-4,D-5" },
+        { "(endz e add)",             "D-2,D-3,D-4,D-5" },
+        { "(endz add)(B-4 add)",      "B-4,D-1,D-2,D-3,D-4,D-5" },
+        { "(B-4 add)(endz add)",      "B-4,D-1,D-2,D-3,D-4,D-5" },
       };
       for (int i = 0; i < matrix.GetLength(0); i++) {
         var tp = String.Format(testprog, matrix[i, 0]);
@@ -265,7 +269,7 @@ namespace PolygamoTest {
         @"(include ""testincl.poly"")" +
         @"(game (gamestub1)" +
         @" (board (boardgrid45))" +
-        @" (board-setup (X (man C-1)) (O (man C-3)) (N (chip D-1)) )" +
+        @" (board-setup (X (man off 1 C-1) (chip off 1)) (O (man off 1 C-3) (chip off 1)) (N (chip D-1)) )" +
         @" (piece (name man) (moves {0}))" +
         @" (piece (name chip))" +
         @")";
@@ -274,10 +278,12 @@ namespace PolygamoTest {
         { "(e add)                      ", "Move,man,X,C-1,C-2" },
         { "(e (add chip))               ", "Move,chip,X,C-1,C-2" },
         { "(e (add man chip))           ", "Move,man,X,C-1,C-2;Move,chip,X,C-1,C-2" },
+        { "(B-1 add)                    ", "Move,man,X,C-1,B-1" },
                                         
         { "(e add-copy)                 ", "Copy,man,X,C-1,C-2" },
         { "(e (add-copy chip))          ", "Copy,chip,X,C-1,C-2" },
         { "(e (add-copy man chip))      ", "Copy,man,X,C-1,C-2;Copy,chip,X,C-1,C-2" },
+        { "(B-1 add-copy)               ", "Copy,man,X,C-1,B-1" },
 
         { "(s create n e add)           ", "Move,man,X,C-1,C-2;Drop,man,X,D-1," },
         { "(s (create O) n e add)       ", "Move,man,X,C-1,C-2;Drop,man,O,D-1," },
@@ -288,14 +294,16 @@ namespace PolygamoTest {
         { "(s (create chip e) n e add)  ", "Move,man,X,C-1,C-2;Drop,chip,X,D-2," },
         { "(s (create O e) n e add)     ", "Move,man,X,C-1,C-2;Drop,man,O,D-2," },
         { "(s (create O chip e) n e add)", "Move,man,X,C-1,C-2;Drop,chip,O,D-2," },
+        { "(B-1 create n e add)         ", "Move,man,X,C-1,A-2;Drop,man,X,B-1," },
 
-        { "(e capture add)            ", "" },
+        { "(e capture add)            ", "Move,man,X,C-1,C-2;Take,man,X,C-2," },
         { "(e e capture w add)        ", "Move,man,X,C-1,C-2;Take,man,X,C-3," },
-        { "(e e e capture w w add)    ", "" },
-        { "(e (capture n) add)        ", "" },
+        { "(e e e capture w w add)    ", "Move,man,X,C-1,C-2;Take,man,X,C-4," },
+        { "(e (capture n) add)        ", "Move,man,X,C-1,C-2;Take,man,X,B-2," },
         { "(e (capture e) add)        ", "Move,man,X,C-1,C-2;Take,man,X,C-3," },
-        { "((capture C-2) e add)      ", "" },
+        { "((capture C-2) e add)      ", "Move,man,X,C-1,C-2;Take,man,X,C-2," },
         { "((capture C-3) e add)      ", "Move,man,X,C-1,C-2;Take,man,X,C-3," },
+        { "(B-1 capture add)          ", "Move,man,X,C-1,B-1;Take,man,X,B-1," },
       };
       for (int i = 0; i < matrix.GetLength(0); i++) {
         var tp = String.Format(testprog, matrix[i, 0]);
@@ -323,28 +331,28 @@ namespace PolygamoTest {
         @")";
 
       var matrix = new string[,] {
-        { "(e change-owner add)       ", "" },
+        { "(e change-owner add)       ", "Move,man,X,C-1,C-2;Owner,man,X,C-2," },
         { "(s change-owner n e add)   ", "Move,man,X,C-1,C-2;Owner,man,X,D-1," },
-        { "((change-owner n) e add)   ", "" },
+        { "((change-owner n) e add)   ", "Move,man,X,C-1,C-2;Owner,man,X,B-1," },
         { "((change-owner s) e add)   ", "Move,man,X,C-1,C-2;Owner,man,X,D-1," },
-        { "((change-owner D-2) e add) ", "" },
+        { "((change-owner D-2) e add) ", "Move,man,X,C-1,C-2;Owner,man,X,D-2," },
         { "((change-owner D-1) e add) ", "Move,man,X,C-1,C-2;Owner,man,X,D-1," },
 
         { "(e e change-owner e add)   ", "Move,man,X,C-1,C-4;Owner,man,X,C-3," },
         { "(s change-owner e add)     ", "Move,man,X,C-1,D-2;Owner,man,X,D-1," },
 
-        { "(e flip add)               ", "" },
+        { "(e flip add)               ", "Move,man,X,C-1,C-2;Owner,man,O,C-2," },
         { "(flip add)                 ", "Owner,man,O,C-1," },
-      //{ "(flip e add)               ", "Move,man,X,C-2,C-1;Owner,man,X,D-1," }, // CHECK:???
-        { "(s flip n e add)           ", "Move,man,X,C-1,C-2;Owner,man,X,D-1," },
-        { "((flip n) e add)           ", "" },
-        { "((flip s) e add)           ", "Move,man,X,C-1,C-2;Owner,man,X,D-1," },
-        { "((flip D-2) e add)         ", "" },
-        { "((flip D-1) e add)         ", "Move,man,X,C-1,C-2;Owner,man,X,D-1," },
-        { "(s flip n e add)           ", "Move,man,X,C-1,C-2;Owner,man,X,D-1," },
+        { "(flip e add)               ", "Move,man,X,C-1,C-2;Owner,man,O,C-1," }, // CHECK:???
+        { "(s flip n e add)           ", "Move,man,X,C-1,C-2;Owner,man,O,D-1," },
+        { "((flip n) e add)           ", "Move,man,X,C-1,C-2;Owner,man,O,B-1," },
+        { "((flip s) e add)           ", "Move,man,X,C-1,C-2;Owner,man,O,D-1," },
+        { "((flip D-2) e add)         ", "Move,man,X,C-1,C-2;Owner,man,O,D-2," },
+        { "((flip D-1) e add)         ", "Move,man,X,C-1,C-2;Owner,man,O,D-1," },
+        { "(s flip n e add)           ", "Move,man,X,C-1,C-2;Owner,man,O,D-1," },
 
-        { "(e e flip e add)           ", "Move,man,X,C-1,C-4;Owner,man,X,C-3," },
-        { "(s flip e add)             ", "Move,man,X,C-1,D-2;Owner,man,X,D-1," },
+        { "(e e flip e add)           ", "Move,man,X,C-1,C-4;Owner,man,O,C-3," },
+        { "(s flip e add)             ", "Move,man,X,C-1,D-2;Owner,man,O,D-1," },
       };
       for (int i = 0; i < matrix.GetLength(0); i++) {
         var tp = String.Format(testprog, matrix[i, 0]);
@@ -408,9 +416,11 @@ namespace PolygamoTest {
       Logger.Open(1);
       var testprog =
         @"(include ""testincl.poly"")" +
-        @"(game (title ""moveto"") (players X O N) (turn-order (X N) (O N))" +
+        @"(game (title ""moveto"")" +
+        @" (players X O N)" + 
+        @" (turn-order (X N) (O N))" +
         @" (board (boardgrid33))" +
-        @" (board-setup (X (man C-1)) (O (man C-3)) )" +
+        @" (board-setup (X (man C-1)) (O (man C-3)) (N (man off 1)))" +
         @" (piece (name man) {0})" +
         @")";
 
@@ -439,5 +449,92 @@ namespace PolygamoTest {
         Assert.IsTrue(game.LegalMoves.All(m => positions[m.Index] == m.Position1));
       }
     }
+
+    /// <summary>
+    /// Test move move-type
+    /// </summary>
+    [TestMethod]
+    public void MoveMoveType() {
+      Logger.Open(1);
+      var testprog =
+        @"(include ""testincl.poly"")" +
+        @"(game (title ""movetype"")" +
+        @" (players X O)" +
+        @" (turn-order {0})" +
+        @" (board (boardgrid33))" +
+        @" (board-setup (X (man A-1)) )" +
+        @" (piece (name man) (moves {1}) )" +
+        @")";
+
+      var matrix = new string[,] {
+        { "X; (s add)",                                         "X A-1 B-1" },
+        { "X; (s add) (se add)",                                "X A-1 B-1; X A-1 B-2" },
+        { "X;      (s add) (move-type mt) (se add)",            "X A-1 B-1; X A-1 B-2" },
+        { "X;      (s add) (s s add) (move-type mt) (se add)",  "X A-1 B-1; X A-1 B-2; X A-1 C-1" },
+        { "X;      (s add) (move-type mt) (s s add) (se add)",  "X A-1 B-1; X A-1 B-2; X A-1 C-1" },
+        // these test correct if move-type Any includes all others
+        { "(X mt); (s add) (move-type mt) (se add)",            "X A-1 B-2" },
+        { "(X mt); (s add) (s s add) (move-type mt) (se add)",  "X A-1 B-2" },
+        { "(X mt); (s add) (move-type mt) (s s add) (se add)",  "X A-1 B-2; X A-1 C-1" },
+        // these test correct if move-type Any does NOT include all others
+        //{ "X;      (s add) (move-type mt) (se add)",            "X A-1 B-1" },
+        //{ "X;      (s add) (s s add) (move-type mt) (se add)",  "X A-1 B-1; X A-1 C-1" },
+        //{ "X;      (s add) (move-type mt) (s s add) (se add)",  "X A-1 B-1" },
+      };
+      for (int i = 0; i < matrix.GetLength(0); i++) {
+        var frags = matrix[i, 0].Split(";");
+        var script = String.Format(testprog, frags[0], frags[1]);
+        var game = PolyGame.CreateInner("movty", new StringReader(script));
+
+        Assert.IsTrue(game.LegalMoveParts.All(m => m.Kind == MoveKinds.Move));
+        Assert.IsTrue(game.LegalMoveParts.All(m => m.Piece == "man"));
+        var actuals = game.LegalMoves
+          .Select(m => String.Join(" ", m.Player, m.Position1, m.Position2))
+          .OrderBy(s => s)
+          .Join("; ");
+        Assert.AreEqual(matrix[i, 1], actuals, matrix[i, 0]);
+        //var splits = matrix[i, 1].Split(";");
+        //Assert.AreEqual(splits.Length, game.LegalMoves.Count, matrix[i,0]);
+        //for (int j = 0; j < splits.Length; j++) {
+        //  Assert.IsTrue(j < game.LegalMoves.Count, splits[j]);
+        //  var move = game.LegalMoves[j];
+        //  Assert.AreEqual(splits[j], String.Join(" ", move.Player, move.Position1, move.Position2), matrix[i, 0]);
+        //}
+      }
+    }
+
+    [TestMethod]
+    public void DropOffStore() {
+      Logger.Open(1);
+      var testprog =
+        @"(include ""testincl.poly"")" +
+        @"(game (title ""dropos"")" +
+        @" (players X)" +
+        @" (turn-order X)" +
+        @" (board (boardgrid33))" +
+        @" (board-setup (X (man off 2)) )" +
+        @" (piece (name man) {0})" +
+        @")";
+
+      var matrix = new string[,] {
+        { "(drops (e e (verify empty?) add))", "A-3,B-3,C-3; B-3,C-3; " },
+      };
+      for (int i = 0; i < matrix.GetLength(0); i++) {
+        var tp = String.Format(testprog, matrix[i, 0]);
+        var game = PolyGame.CreateInner("dropoff", new StringReader(tp));
+
+        var expects = matrix[i, 1].Split(";");
+        for (int j = 0; j < expects.Length; j++) {
+          foreach (var m in game.LegalMoveParts)
+            Assert.AreEqual("Drop,man,X", Util.Join(",", m.Kind, m.Piece, m.Player), matrix[i, 0]);
+          foreach (var m in game.LegalMoves)
+            Assert.AreEqual("man,,,X", Util.Join(",", m.Piece1, m.Piece2, m.Position2, m.Player), matrix[i, 0]);
+          Assert.AreEqual(expects[j], game.LegalMoves.Select(m => m.Position1).Join(","), matrix[i, 0]);
+
+          game.MakeMove(0);
+        }
+      }
+    }
+
   }
 }

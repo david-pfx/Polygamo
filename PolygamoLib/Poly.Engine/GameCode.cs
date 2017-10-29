@@ -14,6 +14,7 @@
 /// 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Poly.Common;
 using Polygamo;
@@ -146,6 +147,11 @@ namespace Poly.Engine {
     BoardCode _boardcode; // created by Opcodes.NEW
     Dictionary<PieceValue, PieceCode> _piececodes = new Dictionary<PieceValue, PieceCode>();
 
+    internal void Dump(TextWriter tw) {
+      tw.WriteLine("Code: ");
+      foreach (var piece in _piececodes)
+        tw.WriteLine("  Piece={0} code={1}", piece.Key, piece.Value);
+    }
     //--- factories
 
     // Create a new empty board
@@ -161,20 +167,23 @@ namespace Poly.Engine {
 
     // Generate drops for current player for all pieces
     // use all pieces that have moves defined (check off store later) and all positions on the board
+    // TODO: only do drops for pieces with offstore > 0?
     internal IList<MoveModel> CreateDrops(BoardModel board) {
-      return _piececodes.SelectMany(p => board.Def.PositionLookup.Keys
-                        .SelectMany(q => p.Value.CreateDrops(q, board, MoveTypeValue.Any))).ToList();
+      return _piececodes
+        .SelectMany(p => board.Def.PositionLookup.Keys
+        .SelectMany(q => p.Value.CreateDrops(q, board, board.Turn.MoveType)))
+        .ToList();
     }
 
     // Generate moves for all pieces on board for this player
     // use pieces only for this player, only if moves defined, and current position on the board
     internal IList<MoveModel> CreateMoves(BoardModel board) {
       var player = board.MovePlayer;
-      //var player = board.Turn.TurnPlayer;
       return board.PlayedPieceLookup
         .Where(p => p.Value.Player == player)
         .Where(p => _piececodes.ContainsKey(p.Value.Piece))
-        .SelectMany(p => _piececodes[p.Value.Piece].CreateMoves(p.Key, board, MoveTypeValue.Any)).ToList();
+        .SelectMany(p => _piececodes[p.Value.Piece].CreateMoves(p.Key, board, board.Turn.MoveType))
+        .ToList();
     }
 
     void AddGoal(ResultKinds result, PlayerValue[] players, GoalCode condition) {
@@ -251,6 +260,7 @@ namespace Poly.Engine {
     void s_PassTurn(OptionValue value)           { _gamedef.SetProperty("pass turn", value); }
     void s_RecycleCaptures(OptionValue value)    { _gamedef.SetProperty("recycle captures", value); }
     void s_RecyclePromotions(OptionValue value)  { _gamedef.SetProperty("recycle promotions", value); }
+
   }
 
   ///---------------------------------------------------------------------------
@@ -504,8 +514,12 @@ namespace Poly.Engine {
   /// </summary>
   internal class PieceCode : CodeBase {
     PieceDef _piecedef;
-    List<MoveCode> _dropcodes = new List<MoveCode>();
+    List<DropCode> _dropcodes = new List<DropCode>();
     List<MoveCode> _movecodes = new List<MoveCode>();
+
+    public override string ToString() {
+      return String.Format("PieceCode[drops:{0},moves:{1}]", _dropcodes.Join(), _movecodes.Join());
+    }
 
     internal PieceDef Exec() {
       _piecedef = new PieceDef();
@@ -518,13 +532,17 @@ namespace Poly.Engine {
     // create drops for this piece and a position on this board
     internal IList<MoveModel> CreateDrops(PositionValue position, BoardModel board, MoveTypeValue movetype) {
       Logger.WriteLine(5, "Create drops piece:{0} position:{1}", _piecedef.Piece, position);
-      return _dropcodes.SelectMany(c => c.CreateMoves(MoveKinds.Drop, _piecedef.Piece, position, board, movetype)).ToList();
+      return _dropcodes
+        .SelectMany(c => c.CreateMoves(MoveKinds.Drop, _piecedef.Piece, position, board, movetype))
+        .ToList();
     }
 
     // create moves for this piece and position on this board
     internal IList<MoveModel> CreateMoves(PositionValue position, BoardModel board, MoveTypeValue movetype) {
       Logger.WriteLine(5, "Create moves piece:{0} position:{1}", _piecedef.Piece, position);
-      return _movecodes.SelectMany(c => c.CreateMoves(MoveKinds.Move, _piecedef.Piece, position, board, movetype)).ToList();
+      return _movecodes
+        .SelectMany(c => c.CreateMoves(MoveKinds.Move, _piecedef.Piece, position, board, movetype))
+        .ToList();
     }
 
     //--- sexpr api and data
@@ -540,7 +558,7 @@ namespace Poly.Engine {
     void s_Name(PieceValue piece) { _piecedef.Piece = piece; }
     void s_Notation(TextValue text) { _piecedef.HelpLookup[HelpKinds.Notation] = text; }
     void s_Open(TextValue text) { _piecedef.HelpLookup[HelpKinds.Open] = text; }
-    void s_Drops(List<MoveCode> moves) {
+    void s_Drops(List<DropCode> moves) {
       _dropcodes = moves;
       foreach (var code in _dropcodes)
         code.Exec();
@@ -554,15 +572,22 @@ namespace Poly.Engine {
 
   ///---------------------------------------------------------------------------
   /// <summary>
-  /// Static executable for a series of move steps of a given move type
-  /// Nodes are treated in order, move type applies to following nodes.
+  /// Static executable for a series of move/drop steps.
+  /// A drop can have a qualifying position or zone, which applies to the whole series.
+  /// A move type applies to the following list of steps.
   /// Builds a table of movegens, indexed by move type.
   /// A movegen is a sequence of steps containing one or more adds, subject to early termination.
   /// </summary>
   internal class MoveCode : CodeBase {
-    Maybe<PositionOrZone> _posorzone;
-    MoveTypeValue _movetype = MoveTypeValue.Any;
-    Dictionary<MoveTypeValue, List<MoveGenCode>> _movegens = new Dictionary<MoveTypeValue, List<MoveGenCode>>();
+    // Table of move generation steps indexed by move type (default is Any)
+    protected Dictionary<MoveTypeValue, List<MoveGenCode>> _movegens = new Dictionary<MoveTypeValue, List<MoveGenCode>>();
+    // Temporary, qualifies following steps
+    protected MoveTypeValue _movetype = MoveTypeValue.Any;
+
+    public override string ToString() {
+      return String.Format("MoveCode[{0}]",
+        _movegens.Select(g => String.Format("{0}->{1}", g.Key, g.Value.Join())).Join(";"));
+    }
 
     // exec code on sexpr api to set up movegens
     internal void Exec() {
@@ -570,32 +595,54 @@ namespace Poly.Engine {
     }
 
     // create all drops and moves for piece, position and board
-    // checks position/zone restriction
-    internal IEnumerable<MoveModel> CreateMoves(MoveKinds kind, PieceValue piece, PositionValue position, BoardModel board, MoveTypeValue movetype) {
-      if (!_posorzone.IsNull) {
-        var posorzone = _posorzone.Value as PositionOrZone;
-        if (posorzone.IsPosition) {
-          if (position != posorzone.Position) yield break;
-        } else if (!board.InZone(posorzone.Zone, position)) yield break;
+    // checks movetype restriction if supplied, but Any means any
+    // CHECK: I thought this was the way it used to be???
+    // checks position or zone restriction by peeking into movegen
+    internal IEnumerable<MoveModel> CreateMoves(MoveKinds kind, PieceValue piece, PositionValue position, 
+      BoardModel board, MoveTypeValue movetype) {
+
+      var movegens = (movetype == MoveTypeValue.Any) ? _movegens.Values.SelectMany(m => m)
+        : _movegens.SafeLookup(movetype);
+      if (movegens == null) yield break;
+      foreach (var movegen in movegens) {
+        var ok = (kind == MoveKinds.Move || movegen.PosOrZone.IsNull);
+        if (!ok) {
+          var posorzone = movegen.PosOrZone.Value as PositionOrZone;
+          ok = (posorzone.IsPosition) ? (position == posorzone.Position)
+            : board.InZone(posorzone.Zone, position);
+        }
+        if (ok) {
+          Logger.WriteLine(4, "CreateMoves {0} piece:{1} position:{2} movetype:{3}", kind, piece, position, movetype);
+          foreach (var move in movegen.Exec(kind, piece, position, board))
+            yield return move;
+        }
       }
       // TODO: after each Exec if the partial flag is set, add any possible further moves 
       // (perhaps of a specific move type)
-      var gencodes = (movetype == MoveTypeValue.Any) 
-        ? _movegens.Values.SelectMany(m => m) 
-        : _movegens[movetype].AsEnumerable();
-      // moves generated for AsPlayer, although result will be owned by TurnPlayer
-      foreach (var movegen in gencodes)
-        foreach (var move in movegen.Exec(board, kind, board.Turn.TurnPlayer, board.Turn.MovePlayer, piece, position))
-          yield return move;
     }
 
     //--- sexpr api
 
     void s_MoveType(MoveTypeValue movetype) { _movetype = movetype; }
-    void s__List(Maybe<PositionOrZone> posorzone, List<MoveGenCode> steplist) {
-      _posorzone = posorzone;
-      foreach (var step in steplist) {
-        _movegens.AddMulti(_movetype, step);
+    // the step lists come in singly preceded by (optional) movetype, and get added to a 
+    // list of lists
+    void s__List(List<MoveGenCode> movegencodes) {
+      foreach (var movegencode in movegencodes)
+        _movegens.AddMulti(_movetype, movegencode);
+    }
+  }
+
+  internal class DropCode : MoveCode {
+
+    //--- sexpr api
+
+    void s_MoveType(MoveTypeValue movetype) { _movetype = movetype; }
+    // the step lists come in singly preceded by (optional) movetype, and get added to a 
+    // list of lists, with posorzone if applicable
+    void s__List(Maybe<PositionOrZone> posorzone, List<MoveGenCode> movegencodes) {
+      foreach (var movegencode in movegencodes) {
+        movegencode.PosOrZone = posorzone;
+        _movegens.AddMulti(_movetype, movegencode);
       }
     }
   }
@@ -606,15 +653,22 @@ namespace Poly.Engine {
   /// Should always be executed with a new State object
   /// </summary>
   internal class MoveGenCode : CodeBase {
+    // filter applies to drops only
+    internal Maybe<PositionOrZone> PosOrZone;
     MoveGenState _state;
     BoardModel _board;
+
+    public override string ToString() {
+      return PosOrZone.IsNull ? String.Format("Gen[{0}]", Code.Count)
+        : String.Format("Gen[{0};{1}]", PosOrZone, Code.Count);
+    }
 
     // main entry point for generating moves for player, piece and position
     // note that a gencode block can contain multiple sections and generate multiple moves for the position
     // CHECK: the state block persists and must be reinitialised 
-    internal IList<MoveModel> Exec(BoardModel board, MoveKinds kind, PlayerValue turnplayer, PlayerValue asplayer, PieceValue piece, PositionValue position) {
+    internal IList<MoveModel> Exec(MoveKinds kind, PieceValue piece, PositionValue position, BoardModel board) {
       _board = board;
-      _state = MoveGenState.Create(kind, turnplayer, asplayer, piece, position);
+      _state = MoveGenState.Create(kind, piece, position, board);
       EvalExec();
       return _state.MoveList;
     }
@@ -639,15 +693,6 @@ namespace Poly.Engine {
     }
 
     //--- sexpr api and data
-
-    // state change
-    void s__Value(PositionOrDirection posordir) {
-      _state.Current = ToPositionSafe(posordir);
-    }
-    void s_Back() { _state.Current = _state.Mark; }
-    void s_To() { _state.To = _state.Current; }
-    void s_From() { _state.From = _state.Current; }
-
     static Dictionary<GoKinds, Func<MoveGenCode, PositionValue>> _golookup = new Dictionary<GoKinds, Func<MoveGenCode, PositionValue>>() {
       { GoKinds.From, m=>m._state.From },
       { GoKinds.To, m=>m._state.To ?? m._state.Current },
@@ -655,6 +700,17 @@ namespace Poly.Engine {
       { GoKinds.LastFrom, m=>m._state.LastFrom },
       { GoKinds.LastTo, m=>m._state.LastTo },
     };
+
+    //-- state change ops
+
+    // handler for bare position or direction
+    void s__Value(PositionOrDirection posordir) {
+      _state.Current = ToPositionSafe(posordir);
+    }
+    void s_Back() { _state.Current = _state.Mark; }
+    void s_To() { _state.To = _state.Current; }
+    void s_From() { _state.From = _state.Current; }
+
     void s_Go(GoKinds gokind) {
       _state.Current = _golookup[gokind](this);
     }
@@ -706,33 +762,28 @@ namespace Poly.Engine {
     }
     void s_Capture(PositionOrDirection posordir = null) {
       var pos = ToPositionSafe(posordir);
-      if (_board.IsPlayed(pos))
-        _state.AddCapture(pos);
-      else Break();
+      _state.AddCapture(pos);  // just do it
     }
     void s_Cascade() {
       throw Error.NotImpl("cascade");
     }
     void s_ChangeOwner(PositionOrDirection posordir = null) {
       var pos = ToPositionSafe(posordir);
-      if (_board.IsPlayed(pos))
       _state.AddChangeOwner(pos, _state.Player);
-      else Break();
     }
     void s_ChangeType(PieceValue piece, PositionOrDirection posordir = null) {
       var pos = ToPositionSafe(posordir);
-      if (_board.IsPlayed(pos))
-        _state.AddChangePiece(pos, piece);
-      else Break();
+      _state.AddChangePiece(pos, piece);
     }
     void s_Create(Maybe<PlayerValue> player, Maybe<PieceValue> piece, PositionOrDirection posordir = null) {
-      _state.AddDrop(player.IsNull ? _state.Player : player.Value, ToPositionSafe(posordir), piece.IsNull ? _state.Piece : piece.Value);
+      _state.AddDrop(player.IsNull ? _state.Player : player.Value, 
+        ToPositionSafe(posordir), piece.IsNull ? _state.Piece : piece.Value);
     }
+    // Flip piece to next player in declared order of players
+    // CHECK: docs are ambiguous
     void s_Flip(PositionOrDirection posordir = null) {
       var pos = ToPositionSafe(posordir);
-      if (_board.IsPlayed(pos))
-        _state.AddChangeOwner(pos, _board.NextOwner(pos));
-      else Break();
+      _state.AddChangeOwner(pos, _board.NextOwner(_state.Player));
     }
 
     // control code

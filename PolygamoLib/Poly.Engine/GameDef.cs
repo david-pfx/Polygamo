@@ -125,11 +125,16 @@ namespace Poly.Engine {
       tw.WriteLine("Game: ");
       tw.WriteLine("  Settings={0}", PropertyLookup.Join(","));
       tw.WriteLine("  Players={0}", PlayerLookup.Join(","));
-      tw.WriteLine("  MovePriorities={0}", MovePriorities.Join(","));
       tw.WriteLine("  TurnOrders={0}", TurnOrders.Join(","));
+      tw.WriteLine("  MovePriorities={0}", MovePriorities.Join(","));
       tw.WriteLine("  Setups={0}", SetupItems.Join(","));
       tw.WriteLine("  Goals={0}", Goals.Join(","));
+      tw.WriteLine("  Pieces={0}", PieceLookup.Values.Join(","));
+      tw.WriteLine("");
       Board.Dump(tw);
+      Code.Dump(tw);
+      // nice idea but no data?
+      //foreach (var piece in PieceLookup.Values) piece.Dump(tw);
     }
 
     internal static GameDef Create(GameCode code, bool isvariant) {
@@ -231,10 +236,11 @@ namespace Poly.Engine {
   /// </summary>
   internal class PlayerDef : DefBase {
     internal PlayerValue Player;
-    internal bool IsActive;
+    internal bool IsActive;         // active player set per turn order
 
     internal bool IsNeutral { get { return !IsActive; } }
     internal bool IsRandom { get { return Player.Value.StartsWith("?"); } }
+    internal bool IsPlayable { get { return IsActive && !IsRandom; } }
 
     public override string ToString() {
       return String.Format("{0}:{1}", Player.Value, IsActive ? "active" : "neutral");
@@ -336,7 +342,8 @@ namespace Poly.Engine {
     }
 
     internal void Dump(TextWriter tw) {
-      tw.WriteLine("Board: dimensions={0}", Dimensions);
+      tw.WriteLine("Board: dimensions={0} positions={1} links={2} zones={3}", 
+        Dimensions, PositionLookup.Count, LinkLookup.Count, ZoneLookup.Count);
       tw.WriteLine("  Images={0}", Images.Join());
       tw.WriteLine("  Positions={0}", PositionLookup.Values.Join("; "));
       var sl = LinkLookup.Select(kv => string.Format("{0}:({1})", kv.Key, kv.Value.Join()));
@@ -492,9 +499,9 @@ namespace Poly.Engine {
   /// Defines a board zone for addition to the board
   /// </summary>
   internal class ZoneDef : DefBase {
-    internal ZoneValue Name;
-    internal HashSet<PlayerValue> Players;
-    internal HashSet<PositionValue> Positions;
+    internal ZoneValue Name = null;
+    internal HashSet<PlayerValue> Players = new HashSet<PlayerValue>();
+    internal HashSet<PositionValue> Positions = new HashSet<PositionValue>();
   }
 
   ///---------------------------------------------------------------------------
@@ -558,6 +565,15 @@ namespace Poly.Engine {
 
     public override string ToString() {
       return Piece.Value + (IsDummy ? " dummy" : "");
+    }
+
+    internal void Dump(TextWriter tw) {
+      tw.WriteLine("Piece: {0}", this);
+      tw.WriteLine("  Help={0}", HelpLookup.Join(","));
+      tw.WriteLine("  Images={0}", ImageLookup.Select(i=>String.Format("{0}=>{1}", i.Key, i.Value.Join(","))).Join(";"));
+      tw.WriteLine("  Attributes={0}", AttributeLookup.Join(","));
+      tw.WriteLine("  Drops={0}", Drops.Join(","));
+      tw.WriteLine("  Moves={0}", Moves.Join(","));
     }
 
     internal void AddImages(PlayerValue player, IList<TextValue> images) {

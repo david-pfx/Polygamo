@@ -140,6 +140,7 @@ public class UiManager : MonoBehaviour {
   }
 
   internal void DoButtonAction(string input, string prompt, Text status, Action action = null) {
+    Util.Trace(2, "DoButton {0} {1}", input, prompt);
     if (input == "enter") status.text = prompt;
     else if (input == "exit") status.text = "";
     else if (input == "click" && action != null) action();

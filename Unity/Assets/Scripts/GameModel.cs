@@ -35,12 +35,13 @@ namespace PolygamoUnity {
   /// implements data model for Game and Board
   /// </summary>
   public class GameBoardModel {
-    internal static string LastError { get { return PolyGame.LastError; } }
+    internal ScriptInfo Script { get; private set; }
+    internal int Seed { get; private set; }
 
+    internal static string LastError { get { return PolyGame.LastError; } }
     internal IList<string> GameList { get { return _polygame.Menu; } }
     internal IList<string> ThumbnailList { get { return _polygame.Thumbnails; } }
 
-    internal ScriptInfo Script { get; private set; }
     internal string Title { get { return _polygame.Title; } }
     internal string Description { get { return _polygame.GetOption("description"); } }
     internal string History { get { return _polygame.GetOption("history"); } }
@@ -94,6 +95,7 @@ namespace PolygamoUnity {
       var engine = PolyGame.Create(script.Filename, new StringReader(gameprog));
       return (engine == null) ? null : new GameBoardModel {
         Script = script,
+        Seed = 1, // FIX: optional
         _polygame = engine,
       }.Setup();
     }
@@ -102,13 +104,13 @@ namespace PolygamoUnity {
     internal GameBoardModel Create(int index) {
       return new GameBoardModel {
         Script = Script,
+        Seed = 1, // FIX: optional
         _polygame = this._polygame.Create(index)
       }.Setup();
     }
 
     GameBoardModel Setup() {
       MyPlayer = _polygame.FirstPlayer;
-      //MyPlayer = _polygame.Players[0];
       _tiles = _polygame.Positions
         .Where(s => !s.IsDummy)
         .Select(s => TileModel.Create(this, s.Name,
@@ -123,6 +125,7 @@ namespace PolygamoUnity {
     // start a new game
     internal void NewGame() {
       _polygame.NewBoard(ChooserKinds.Mcts, StepCount, MaxDepth);
+      _polygame.Reseed(++Seed);
       TimePlayed = TimeSpan.Zero;
       UpdatePieces();
     }
@@ -130,6 +133,7 @@ namespace PolygamoUnity {
     internal void Restart() {
       if (IsGameOver) return;
       _polygame.Restart();
+      _polygame.Reseed(Seed); // FIX: should not be needed
       TimePlayed = TimeSpan.Zero;
       UpdatePieces();
     }

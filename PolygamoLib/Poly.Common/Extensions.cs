@@ -51,6 +51,12 @@ namespace Poly.Common {
       return tmp.ToString();
     }
 
+    // return simple split with trim
+    public static string[] Split(this string target, string delim = ",") {
+      var parts = target.Split(delim[0]);
+      return parts.Select(p => p.Trim()).ToArray();
+    }
+
     // return nth split on ';' as an array of strings split on ','
     public static string[] SplitXY(this string target, int index = 0) {
       var parts = target.Split(';');

@@ -86,7 +86,6 @@
     <Compile Include="Assets\Scripts\GameModel.cs" />
     <Compile Include="Assets\Scripts\HighScores.cs" />
     <Compile Include="Assets\Scripts\ItemManager.cs" />
-    <Compile Include="Assets\Scripts\Loader.cs" />
     <Compile Include="Assets\Scripts\OptionsView.cs" />
     <Compile Include="Assets\Scripts\ScriptItemView.cs" />
     <Compile Include="Assets\Scripts\ScriptSelectionView.cs" />

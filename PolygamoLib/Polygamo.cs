@@ -422,6 +422,10 @@ namespace Polygamo {
       return this;
     }
 
+    public void Dump(TextWriter tw) {
+      _gamedef.Dump(tw);
+    }
+
     // create game model, initially or after changing options
     PolyGame CreateGameModel() {
       _gamemodel = _menumodel.CreateGame(_variant);
@@ -486,9 +490,11 @@ namespace Polygamo {
     // first player is the first active player to have a turn
     public string FirstPlayer {
       get {
-        return _gamedef.TurnOrders
-          .Where(t => _gamedef.PlayerLookup[t.TurnPlayer].IsActive)
-          .First().TurnPlayer.Value;
+        var firstturn = _gamedef.TurnOrders
+          .Where(t => _gamedef.PlayerLookup[t.TurnPlayer].IsPlayable)
+          .First();
+        return (firstturn == null) ? PlayerValue.None.Value 
+          : firstturn.TurnPlayer.Value;
       }
     }
     public IList<string> BoardImages { get { return _images; } }

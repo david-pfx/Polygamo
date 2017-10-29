@@ -91,5 +91,8 @@ namespace Poly.Common {
     public bool IsNull { get { return Value == null; } }
     public static Maybe<T> Null { get { return new Maybe<T>() { Value = null }; } }
     public static Maybe<T> Create(T body) { return new Maybe<T> { Value = body }; }
+    public override string ToString() {
+      return IsNull ? "null" : Value.ToString();
+    }
   }
 }

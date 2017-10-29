@@ -71,8 +71,9 @@ public class GameManager : MonoBehaviour {
     _highscores.ClearScore();
     FindObjectOfType<AudioSource>().mute = true;  // set directly -- options panel not started yet
     Items.UserGamesFolder = "test games";
-    InitialScript = "Kono";
-    InitialVariant = 0;
+    //InitialScript = "TicTacToe";
+    //InitialScript = "Kono";
+    //InitialVariant = 0;
 #endif
   }
 
@@ -87,7 +88,8 @@ public class GameManager : MonoBehaviour {
   }
 
   // Check for game over each cycle
-  void Update() {
+  // Late update ensures mouse click has been 'used'
+  void LateUpdate() {
     if (State == GameState.Startup) return;
     if (_model.IsGameOver)
       SetState(GameState.GameOver);
@@ -98,7 +100,7 @@ public class GameManager : MonoBehaviour {
     if (state == State) return false;
     State = state;
     if (state != GameState.Pause) _savestate = state;
-    if (StateChangeEvent != null) StateChangeEvent(this, State);
+    if (StateChangeEvent != null) StateChangeEvent(this, State); // currently no-op
     return true;
   }
 
@@ -118,21 +120,22 @@ public class GameManager : MonoBehaviour {
   }
 
   // Select a different variant
-  internal void LoadGame(int index) {
+  internal bool LoadGame(int index) {
     var model = _model.Create(index);
-    Launch(model);
+    if (model != null) Launch(model);
+    return model != null;
   }
 
   // Called to start a new game (or could be same again)
   internal void NewGame() {
-    SetState(GameState.GameOver);
+    SetState(GameState.NewGame);
     _model.NewGame();
     StartCoroutine(FadeAndGo());
   }
 
   // Called to start a new game (or could be same again)
   internal void RestartGame() {
-    SetState(GameState.GameOver);
+    SetState(GameState.NewGame);
     _model.Restart();
     StartCoroutine(FadeAndGo());
   }
@@ -149,8 +152,8 @@ public class GameManager : MonoBehaviour {
 
   // Called to start a game previously selected
   void Launch(GameBoardModel model) {
-    if (model == null || model.IsGameOver) return;
-    SetState(GameState.GameOver);
+    if (model == null) return;
+    SetState(GameState.NewGame);
     _model = model;
     // reset AI params
     _model.ThinkTime = ThinkTime;
@@ -168,9 +171,9 @@ public class GameManager : MonoBehaviour {
     var slideoffset = 2f * camera.orthographicSize * camera.aspect;
     // destroy old board if it exists
     if (_boardobject != null) {
+      // fade away and destroy
       var bv1 = _boardobject.GetComponent<BoardView>();
       yield return StartCoroutine(bv1.FadeOut(slideoffset));
-      Destroy(_boardobject);
     }
     SetState(GameState.NewGame);
     _highscores.LoadScore();
@@ -195,7 +198,7 @@ public class GameManager : MonoBehaviour {
     var bdheight = (_boardobject.transform as RectTransform).rect.height;
     var scale = uiheightex / bdheight;
     _boardobject.transform.localScale = new Vector3(scale, scale, 0);
-    Util.Trace(2, "GM start uih={0} uihx={1} bdh={2} scale={3}", uiheight, uiheightex, bdheight, scale);
+    Util.Trace(2, "[CreateBoard uih={0} uihx={1} bdh={2} scale={3}]", uiheight, uiheightex, bdheight, scale);
   }
 
 }

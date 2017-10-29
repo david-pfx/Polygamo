@@ -59,18 +59,28 @@ namespace Poly {
         //Load(@"TicTacToe.txt", 0, 1).Play(1, 0, 3);
         //CreateGameTTT("ttt", "", "", 4).Play(0);
 
+        var xx = 50;
+
         // create and run test game
-        //CreateTestGame("xxx", 1);
+        if (xx == 10) CreateTestGame("xxx", 4);
+        if (xx == 11) CreateTestGame("xxx", 4).Switch(0, 0, 2);
 
         // compile one and do something
-        //CompileAndAct(SearchFolders(@"..\Unity\User Games", 38, 1), 0, 0, pw => pw.Play(1, 0, 5));
+        if (xx == 20) CompileAndAct(SearchFolders(@"..\Unity\test games", 4, 1), 0, 1, pw => pw.Switch(0, 0, 4));
+        if (xx == 21) CompileAndAct(SearchFolders(@"..\Unity\test games", 4, 1), 0, 0, pw => pw.Switch(1, 1, 2));
+        if (xx == 22) CompileAndAct(SearchFolders(@"..\GamesPoly", 0, 1), 0, 4, pw => pw.Switch(1, 0, 5));
 
         // interactive selection
-        //CompileAndAsk(SearchFolders(@"..\Unity\User Games"), 1, pw => pw.Play(1, 0, 3));
-        CompileAndAsk(SearchFolders(@"..\GamesPoly"), 1, pw => pw.Play(1, 0, 3));
+        if (xx == 30) CompileAndAsk(SearchFolders(@"..\Unity\test games"), 1, pw => pw.Switch(1, 0, 3));
+        if (xx == 31) CompileAndAsk(SearchFolders(@"..\GamesPoly"), 1, pw => pw.Switch(1, 0, 3));
+
+        // pick one and go
+        //if (xx == 50) CompileAndAct(SearchFolders(@"..\Unity\test games", contains: "fruit"), 0, 0, pw => pw.Switch(1, 0, 4));
+        //if (xx == 50) CompileAndAct(SearchFolders(@"..\Unity\test games", contains: "cave_"), 0, 0, pw => pw.Switch(1, 0, 3));
+        if (xx == 50) CompileAndAct(SearchFolders(@"..\Unity\test games", contains: "hex_"), 0, 0, pw => pw.Switch(1, 0, 3));
 
         // compile all for errors
-        //CompileAndAct(SearchFolders(@"..\Unity\User Games"), 0, 0, null);
+        if (xx == 60) CompileAndAct(SearchFolders(@"..\Unity\User Games"), 0, 0, null);
 
         Console.ReadLine();
 
@@ -82,7 +92,7 @@ namespace Poly {
       }
     }
 
-    static IList<string> SearchFolders(string root, int skip = 0, int take = 999) {
+    static IList<string> SearchFolders(string root, int skip = 0, int take = 999, string contains = null) {
       _output.WriteLine("Searching root {0}...", root);
       var paths = Directory.GetFiles(root, "*.zrf", SearchOption.AllDirectories)
         .Concat(Directory.GetFiles(root, "*.poly", SearchOption.AllDirectories))
@@ -90,6 +100,7 @@ namespace Poly {
         .OrderBy(p => p)
         .Skip(skip)
         .Take(take)
+        .Where(p=> contains == null || p.ToLower().Contains(contains.ToLower()))
         .ToList();
       _output.WriteLine("Root {0} found {1} files", root, paths.Count);
       return paths;
@@ -102,9 +113,11 @@ namespace Poly {
       while (true) {
         if (gno >= 0) _output.WriteLine("Game {0} script {1}", gno, paths[gno]);
         var prompt = string.Format("Choose a game [0-{0}], quit or play: ", paths.Count - 1);
-        var input = GetInput(prompt, "|p|[0-9]+");
+        var input = GetInput(prompt, "|g|p|[0-9]+");
         if (input == "") return;
-        if (input == "p" && pw != null) action(pw);
+        else if (input == "p" && pw != null) action(pw);
+        else if (input == "g")
+          _output.WriteLine(Enumerable.Range(0, paths.Count).Select(x => String.Format("{0}\t{1}", x, paths[x])).Join("\n"));
         else {
           gno = input.SafeIntParse() ?? -1;
           if (gno == -1) gno = paths.ToList().FindIndex(p => p.Contains(input));
@@ -116,7 +129,7 @@ namespace Poly {
       }
     }
 
-    static void CompileAndAct(IList<string> paths, int variant, int level, Action<PlayWrapper> action) {
+    static void CompileAndAct(IList<string> paths, int variant, int level, Action<PlayWrapper> action = null) {
       for (var i = 0; i < paths.Count; ++i) {
         Logger.WriteLine(1, "=====\nGame {0} script {1}", i, paths[i]);
         var pw = CompileAndAct(paths[i], variant, level, action);
@@ -129,7 +142,8 @@ namespace Poly {
 
     static PlayWrapper CompileAndAct(string gamename, int variant, int level, Action<PlayWrapper> action) {
       Logger.WriteLine(1, "Script: {0} variant {1} level {2}", gamename, variant, level);
-      var pw = LoadGame(gamename, variant, level);
+      var pw = LoadGame(gamename, variant, level, true);
+      //var pw = LoadGame(gamename, variant, level);
       if (pw == null) return null;
       if (action != null) action(pw);
       return pw;
@@ -192,27 +206,33 @@ namespace Poly {
       };
     }
 
-    static void CreateTestGame(string text, int level = -1) {
+    static PlayWrapper CreateTestGame(string text, int level = -1) {
       var testprog =
-        @"(game" +
-        @"(title ""turn1"")" +
-        @"(option ""pass turn"" true)" +
-        @"(players X O N)" +
-        @"(turn-order {0} )" +
-        @"(board)" +
+        @"(include ""testincl.poly"")" +
+        @"(game (title ""movetype"")" +
+        @" (players X O)" +
+        @" (turn-order X (X MT1) O (O MT2))" +
+        @" (board (boardgrid33))" +
+        @" (board-setup (X (man A-1)) (O (man A-2)) )" +
+        @" (piece (name man) {0})" +
         @")";
+
       var matrix = new string[,] {
-        { "X O",                          "X,X,any;O,O,any;X,X,any;O,O,any;X,X,any;O,O,any" },
+        { "(drops (A-1 s add)) (moves (A-1 s add))", "" },
+        //{ "(moves (s add) (move-type mt1) (se add) (move-type mt2) (sw add) )", "X,A-1,B-1;X,B-1,B-2;O,A-2,B-2;O,B-2,B-1" },
       };
 
       if (level >= 0) Logger.Level = level;
+      PolyGame game = null;
       for (int i = 0; i < matrix.GetLength(0); i++) {
-        var tp = String.Format(testprog, matrix[i, 0]);
-        var game = PolyGame.CreateInner("cwld", new StringReader(tp), 0);
-        var expected = matrix[i, 1];
-        //Logger.Assert(expected == game.Pieces.Select(p => p.Name).Join(","), matrix[i, 0]);
+        var script = String.Format(testprog, matrix[i, 0]);
+        game = PolyGame.CreateInner("cwld", new StringReader(script), 0);
+        var splits = matrix[i, 1].SplitXY();
+        var moves = game.LegalMoves;
       }
-
+      return new PlayWrapper {
+        Player = ConsolePlayer.Create(game, 0)
+      };
     }
 
     static void ShowMenu(string gamename, PolyGame game) {
@@ -223,12 +243,15 @@ namespace Poly {
   public class PlayWrapper { 
     public ConsolePlayer Player { get; set; }
 
-    public void Play(int playid, int seed = 0, int level = -1) {
+    public void Switch(int playid, int seed = 0, int level = -1) {
       if (level >= 0) Logger.Level = level;
       if (playid == 0) Player.ShowState();
-      if (playid == 1) Player.PlayTurns(seed, 1, 300, -1, 0);        // me first
-      if (playid == 2) Player.PlayTurns(seed, 1, 300, 0, -1);        // me second
-      if (playid == 3) Player.PlayTurns(seed, 1, 0, -1, -1);        // me both
+
+      if (playid == 1) Player.PlayMe(true, seed);        // me first
+      if (playid == 2) Player.PlayMe(false, seed);    // me second
+      //if (playid == 1) Player.PlayTurns(seed, 1, 300, -1, 0);        // me first
+      //if (playid == 2) Player.PlayTurns(seed, 1, 300, 0, -1);        // me second
+      //if (playid == 3) Player.PlayTurns(seed, 1, 0, -1, -1);        // me both
 
       if (playid == 10) Player.PlayTurns(seed, 3, 0, 4, 4);        // 3 random games, no mcts
       if (playid == 11) Player.PlayTurns(seed, 3, 10, 4, 4);        // 3 random games, mcts 10
@@ -318,6 +341,7 @@ namespace Poly {
 
     internal void ShowState() {
       Logger.WriteLine("Show state for {0}", Game.Title);
+      Game.Dump(_out);
       ShowPosition();
       ShowMoves();
     }
@@ -369,32 +393,40 @@ namespace Poly {
     }
 
     //==========================================================================
-    internal void PlayTurns(int initseed, int ngames, int nsteps, int xrandom, int orandom) {
+    internal void PlayTurns(int initseed, int ngames, int nsteps, int arandom, int brandom) {
       var maxdepth = 9;
-      _out.WriteLine("\nPlay random '{0}' games={1} steps={2} maxdepth={3} random X={4} O={5}\n", 
-        Game.Title, ngames, nsteps, maxdepth, xrandom, orandom);
+      _out.WriteLine("\nPlay turns '{0}' seed={1} games={2} steps={3} maxdepth={4} random A={5} B={6}\n", 
+        Game.Title, initseed, ngames, nsteps, maxdepth, arandom, brandom);
 
       var score = new Dictionary<Pair<string, ResultKinds>, int>();
       for (int seed = initseed; seed < initseed + ngames; seed++) {
         Game.Reseed(seed);
         Game.NewBoard();
-        //Game.NewBoard(ChooserKinds.Mcts, 1, 1);
+        if (Logger.Level >= 2) ShowState();
         Game.StepCount = nsteps;
         Game.MaxDepth = maxdepth;
-        //Game.NewBoard(ChooserKinds.Mcts, nsteps, maxdepth);
         var pick = 0;
         for (int moveno = 0; ; moveno++) {
-          ShowBoard();
-          ShowMoves();
           if (Game.GameResult != ResultKinds.None) break;
           // which to use?
-          var nrandom = (moveno % 2 == 0) ? xrandom : orandom;
+          var nrandom = (Game.TurnPlayer == Game.FirstPlayer) ? arandom : brandom;
           // means get user input
           if (nrandom == -1) {
+            ShowBoard();
+            ShowMoves();
             do {
-              var input = Program.GetInput("Please select a move", "|[0-9]+");
+              pick = -1;
+              var prompt = String.Format("[{0}] Your move (of {1}): ", Logger.Level, Game.LegalMoves.Count);
+              var input = Program.GetInput(prompt, "|[rn]?[0-9]+");
               if (input == "") return;
-              pick = input.SafeIntParse() ?? -1;
+              if (input.StartsWith("n"))
+                Logger.Level = input.Substring(1).SafeIntParse() ?? Logger.Level;
+              else if (input== "r") {
+                Game.NewBoard();
+                if (Logger.Level >= 2) ShowState();
+                moveno = 0;
+                break;
+              } else pick = input.SafeIntParse() ?? -1;
             } while (!(pick >= 0 && pick < Game.LegalMoves.Count));
           }  
           else if (moveno < nrandom) pick = Game.NextRandom(Game.LegalMoves.Count);
@@ -406,21 +438,76 @@ namespace Poly {
             //if (moveno == 4) ShowTree(2);
             pick = Game.ChosenMove.Index;
           }
-          if (pick < 0) break;
-          Logger.WriteLine(3, "{0} make move {1}: {2}", Game.TurnPlayer, pick, Game.GetLegalMove(pick).ToString("P"));
-          //var trigger = (_Polygamo.GetLegalMove(pick).Position1 == "B-2");
-          //if (trigger) Logger.Level = 4;
-          Game.MakeMove(pick);
-          //if (trigger) Logger.PopLevel();
+          if (pick >= 0) {
+            Logger.WriteLine(1, "{0} make move {1} of {2}: {3}", Game.TurnPlayer, pick, Game.LegalMoves.Count,
+              Game.GetLegalMove(pick).ToString("P"));
+            Game.MakeMove(pick);
+          }
         }
         var key = Pair.Create(Game.ResultPlayer, Game.GameResult);
         if (score.ContainsKey(key)) score[key]++;
         else score[key] = 1;
         _out.WriteLine("Seed {0} result {1} {2}", seed, Game.ResultPlayer, Game.GameResult);
+        ShowBoard();
         ShowPosition();
       }
       foreach (var kvp in score)
         _out.WriteLine("\nplayer={0} result={1} count={2}", kvp.Key.Item1, kvp.Key.Item2, kvp.Value);
+    }
+
+    //==========================================================================
+    internal void PlayMe(bool mefirst = true, int initseed = 0, int nsteps = 300) {
+      var maxdepth = 9;
+      _out.WriteLine("\nPlay me '{0}' seed={1} steps={2} maxdepth={3} first={4}\n",
+        Game.Title, initseed, nsteps, maxdepth, mefirst);
+
+      // play a series of games
+      var myplayer = Game.FirstPlayer; // FIX:
+      var input = "i";
+      while (true) {
+        if (input == "i") {
+          Game.Reseed(initseed);
+          Game.NewBoard();
+          Game.StepCount = nsteps;
+          Game.MaxDepth = maxdepth;
+        } else if (input == "n") Game.NewBoard();
+        else if (input == "r") Game.Restart();
+        if (Logger.Level >= 2) ShowState();
+        // for each move
+        var pick = -1;
+        for (int moveno = 0; input != "" ; moveno++) {
+          if (Game.GameResult != ResultKinds.None) break;
+          if (Game.TurnPlayer == myplayer) {
+            ShowBoard();
+            ShowMoves();
+            do {
+              var prompt = String.Format("[{0}] Your move (of {1}): ", Logger.Level, Game.LegalMoves.Count);
+              input = Program.GetInput(prompt, "|[rn]?[0-9]+");
+              if (input == "") break;
+              else if (input.StartsWith("n"))
+                Logger.Level = input.Substring(1).SafeIntParse() ?? Logger.Level;
+              else pick = input.SafeIntParse() ?? -1;
+            } while (!(pick >= 0 && pick < Game.LegalMoves.Count));
+          } else {
+            Game.UpdateChooser();
+            var done = Game.UpdateChooser();
+            Logger.WriteLine(3, "Update returns {0}", done);
+            pick = Game.ChosenMove.Index;
+          }
+          if (pick >= 0) {
+            Logger.WriteLine(1, "{0} make move {1} of {2}: {3}", Game.TurnPlayer, pick, Game.LegalMoves.Count,
+              Game.GetLegalMove(pick).ToString("P"));
+            Game.MakeMove(pick);
+          }
+        }
+        Logger.WriteLine("Game result: {0}", Game.GameResult);
+        while (true) {
+          var prompt = String.Format("[{0}] Init, New or Restart game: ", Logger.Level);
+          input = Program.GetInput(prompt, "[inr]?");
+          if (input == "") return;
+          else break;
+        }
+      }
     }
 
     //--------------------------------------------------------------------------
@@ -497,11 +584,6 @@ namespace Poly {
 
     void ShowMove(PolyMove move) {
       _out.WriteLine("  {0}: {1} {2}", move.Index, move.Player, move.ToString("P"));
-      //_out.Write("  {0}: {1} {2} {3}", move.Index, move.Player, move.Piece1, move.Position1);
-      //foreach (var p in move.Parts)
-      //  _out.Write("; {0} {1} {2} {3} {4} {5}", p.Kind, p.Player, p.Piece, p.Position,
-      //    p.Attribute, p.Attribute == null ? "" : p.Value.ToString());
-      //_out.WriteLine();
     }
   }
 }

@@ -32,7 +32,7 @@ namespace PolygamoTest {
         @"(include ""testincl.poly"")" +
         @"(game (gamestub1)" +
         @" (board (boardgrid45))" +
-        @" (board-setup (X (man C-1)))" +
+        @" (board-setup (X (man off 1 C-1) (chip off 1)))" +
         @" (piece (name man) (drops {0}))" +
         @" (piece (name chip))" +
         @")";
@@ -99,10 +99,15 @@ namespace PolygamoTest {
         { "((change-owner n) e add)       ", "B-1,X,man;C-2,X,man" },
         { "((change-owner B-1) e add)     ", "B-1,X,man;C-2,X,man" },
 
-        { "(n flip add)                   ", "B-1,X,man" },
-        { "(n flip e add)                 ", "B-1,X,man;B-2,X,man" },
-        { "((flip n) e add)               ", "B-1,X,man;C-2,X,man" },
-        { "((flip B-1) e add)             ", "B-1,X,man;C-2,X,man" },
+        // CHECK: ambiguous interpretation of flip
+        { "(n flip add)                   ", "B-1,O,man" },
+        { "(n flip e add)                 ", "B-1,O,man;B-2,X,man" },
+        { "((flip n) e add)               ", "B-1,O,man;C-2,X,man" },
+        { "((flip B-1) e add)             ", "B-1,O,man;C-2,X,man" },
+        //{ "(n flip add)                   ", "B-1,X,man" },
+        //{ "(n flip e add)                 ", "B-1,X,man;B-2,X,man" },
+        //{ "((flip n) e add)               ", "B-1,X,man;C-2,X,man" },
+        //{ "((flip B-1) e add)             ", "B-1,X,man;C-2,X,man" },
 
         { "(n (change-type chip) add)     ", "B-1,X,chip" },    // add then change it
         { "(n (change-type chip) e add)   ", "B-1,O,chip;B-2,X,man" },
@@ -167,7 +172,7 @@ namespace PolygamoTest {
         @")";
 
       var matrix = new string[,] {
-        { "(moves (add))                          ", "B-1,O,man,;C-1,X,man," },
+        { "(moves (add))                         ", "B-1,O,man,;C-1,X,man," },
         { "(attribute H1 false) (moves (add))    ", "B-1,O,man,;C-1,X,man," },
         { "(attribute H1 true) (moves (add))     ", "B-1,O,man,H1;C-1,X,man,H1" },
         { "(attribute H1 true) (attribute H2 true) (moves (add))     ", "B-1,O,man,H1 H2;C-1,X,man,H1 H2" },
@@ -197,7 +202,7 @@ namespace PolygamoTest {
         @"(include ""testincl.poly"")" +
         @"(game (gamestub1)" +
         @" (board (boardgrid45))" +
-        @" (board-setup (X (man C-1)) (O (man B-1)))" +
+        @" (board-setup (X (man off 2 C-1)) (O (man off 2 B-1)))" +
         @" (piece (name man) (drops ((verify empty?) add)))" +
         @")";
 
@@ -251,7 +256,7 @@ namespace PolygamoTest {
         @"(include ""testincl.poly"")" +
         @"(game (gamestub1)" +
         @" (board (boardgrid45))" +
-        @" (board-setup (X (man C-1)) (O (man B-1)))" +
+        @" (board-setup (X (man off 2 C-1)) (O (man off 2 B-1)))" +
         @" (piece (name man) (drops ((verify empty?) add)))" +
         @")";
 

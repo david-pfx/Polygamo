@@ -44,7 +44,7 @@ namespace PolygamoTest {
         @" (board (boardgrid33))" +
         @" (draw-condition (X O) stalemated)" +
         @" (win-condition (relcondttt))" +
-        @" (board-setup (X (man B-1 B-2)) (O (man C-1 C-2)))" +
+        @" (board-setup (X (man off 1 B-1 B-2)) (O (man off 1 C-1 C-2)))" +
         @" (piece (name man) (drops ((verify empty?) add)))" +
         @")";
 
@@ -82,7 +82,7 @@ namespace PolygamoTest {
         @" (board (boardgrid33))" +
         @" (draw-condition (X O) stalemated)" +
         @" (win-condition (relcondttt))" +
-        @" (board-setup (X (man B-1)) (O (man C-1 C-2)))" +
+        @" (board-setup (X (man off 1 B-1)) (O (man off 1 C-1 C-2)))" +
         @" (piece (name man) (drops ((verify empty?) add)))" +
         @")";
 
@@ -118,6 +118,7 @@ namespace PolygamoTest {
         @" (board (boardgrid33))" +
         @" (draw-condition (X O) stalemated)" +
         @" (win-condition (relcondttt))" +
+        @" (board-setup (X (man off 9)) (O (man off 9)))" +
         @" (piece (name man) (drops ((verify empty?) add)))" +
         @")";
 
